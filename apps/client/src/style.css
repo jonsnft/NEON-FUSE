@@ -1,0 +1,6 @@
+html, body { margin: 0; min-height: 100%; background: #071015; color: #dff; font-family: monospace; }
+body { display: grid; place-items: center; }
+main { width: min(96vw, 960px); }
+#hud { display: flex; justify-content: space-between; gap: 1rem; padding: .75rem 0; font-size: 14px; }
+#game { border: 1px solid #2bd9fe; box-shadow: 0 0 28px rgba(43,217,254,.18); }
+canvas { display: block; width: 100%; height: auto; image-rendering: pixelated; }
