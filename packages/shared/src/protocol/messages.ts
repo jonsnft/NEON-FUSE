@@ -19,6 +19,7 @@ export type MatchSnapshot =
       requiredPlayers: number;
       maxPlayers: number;
       readyPlayerIds: string[];
+      mapId?: string;
     }
   | {
       type: "match.snapshot";
