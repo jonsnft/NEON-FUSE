@@ -1,9 +1,9 @@
-import Phaser from "phaser";
+import { AUTO, Game } from "phaser";
 import "./style.css";
 import { GameScene } from "./scenes/GameScene";
 
-new Phaser.Game({
-  type: Phaser.AUTO,
+new Game({
+  type: AUTO,
   parent: "game",
   width: 720,
   height: 624,
