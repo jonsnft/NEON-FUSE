@@ -62,7 +62,7 @@ See `docs/integrations/PLAYBAY_VERIFICATION.md`.
 
 External publishing/storage remains behind adapters.
 
-## Phase 7 — Release gameplay / operations — IN PROGRESS
+## Phase 7 — Release gameplay / operations — COMPLETE
 - four-minute round timer
 - deterministic Sudden Death from minute three
 - official map selection through server allowlist
@@ -72,9 +72,39 @@ External publishing/storage remains behind adapters.
 - runtime environment validation
 - operations/smoke-test runbook
 
+## Phase 8 — Release hardening — COMPLETE
+- map-specific Colyseus matchmaking filter
+- explicit return-to-lobby lifecycle
+- clean consensual room leave
+- bounded reconnect behavior retained
+
+## Phase 9 — Release packaging — COMPLETE
+- reproducible server container
+- reproducible static client container
+- Compose full-stack smoke topology
+- container health checks
+- CI image builds
+
+## Phase 10 — Runtime verification / architecture enforcement — COMPLETE
+- mechanical deterministic-simulation architecture guard
+- real Colyseus server boot in tests
+- real two-client room connection
+- ready-to-playing authoritative lifecycle assertion
+- server-resolved presentation assertion
+- CI guard + runtime integration gate
+
+## Internal release-candidate status
+The repository is internally release-candidate ready in `local` platform mode:
+- architecture guard passes;
+- typecheck passes;
+- unit and real multiplayer runtime tests pass;
+- production client build passes;
+- Compose validates;
+- server and client images build in CI.
+
 ## MVP success criteria
 A player can open the browser, join a room, understand controls immediately, complete a fair 3–5 minute multiplayer round, see a deterministic result and choose to rematch.
 
 ## Release blockers outside this repository
-- authoritative PlayBay integration contract for real item commerce/entitlements
-- production hosting/environment selection and credentials
+- authoritative PlayBay integration contract for real item commerce/entitlements;
+- production hosting/environment selection and credentials.
