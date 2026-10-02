@@ -1,0 +1,22 @@
+services:
+  game-server:
+    build:
+      context: .
+      dockerfile: deploy/server.Dockerfile
+    environment:
+      GAME_SERVER_PORT: "2567"
+      NEON_FUSE_PLATFORM_MODE: local
+    ports:
+      - "2567:2567"
+
+  client:
+    build:
+      context: .
+      dockerfile: deploy/client.Dockerfile
+      args:
+        VITE_GAME_SERVER_URL: http://localhost:2567
+    depends_on:
+      game-server:
+        condition: service_healthy
+    ports:
+      - "8080:80"
