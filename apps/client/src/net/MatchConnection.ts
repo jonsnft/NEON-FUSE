@@ -67,10 +67,14 @@ export class MatchConnection {
     });
 
     room.onLeave((code) => {
-      if (this.manualLeave || code === 1000) {
+      if (this.manualLeave) return;
+
+      this.room = null;
+      if (code === 1000) {
         this.statusHandler?.("DISCONNECTED");
         return;
       }
+
       void this.tryReconnect(reconnectionToken);
     });
   }
