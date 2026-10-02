@@ -20,8 +20,8 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
 
 const isGridPosition = (value: unknown): value is GridPosition =>
   isObject(value) &&
-  Number.isInteger(value.x) &&
-  Number.isInteger(value.y) &&
+  typeof value.x === "number" && Number.isInteger(value.x) &&
+  typeof value.y === "number" && Number.isInteger(value.y) &&
   Object.keys(value).every((key) => key === "x" || key === "y");
 
 const isTile = (value: unknown): value is TileKind =>
@@ -43,10 +43,10 @@ export function validateCreatorMap(input: unknown): ValidationResult<CreatorMapD
     errors.push("displayName must be 1..80 characters");
   }
   if (typeof creatorId !== "string" || !ID.test(creatorId)) errors.push("invalid creatorId");
-  if (!Number.isInteger(width) || Number(width) < MIN_SIDE || Number(width) > MAX_SIDE || Number(width) % 2 === 0) {
+  if (typeof width !== "number" || !Number.isInteger(width) || width < MIN_SIDE || width > MAX_SIDE || width % 2 === 0) {
     errors.push("width must be an odd integer between 9 and 31");
   }
-  if (!Number.isInteger(height) || Number(height) < MIN_SIDE || Number(height) > MAX_SIDE || Number(height) % 2 === 0) {
+  if (typeof height !== "number" || !Number.isInteger(height) || height < MIN_SIDE || height > MAX_SIDE || height % 2 === 0) {
     errors.push("height must be an odd integer between 9 and 31");
   }
 
