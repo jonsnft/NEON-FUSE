@@ -12,6 +12,7 @@ export interface LobbyRoomInfo {
     maxPlayers?: number;
     connectedPlayers?: number;
     readyPlayers?: number;
+    mapId?: string;
   };
 }
 
