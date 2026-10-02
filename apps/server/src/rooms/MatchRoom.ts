@@ -201,7 +201,8 @@ export class MatchRoom extends Room {
       connectedPlayers,
       requiredPlayers: MIN_PLAYERS,
       maxPlayers: this.maxClients,
-      readyPlayerIds: [...this.readyIds]
+      readyPlayerIds: [...this.readyIds],
+      mapId: this.mapId
     };
     this.broadcast("snapshot", snapshot);
   }
@@ -237,7 +238,8 @@ export class MatchRoom extends Room {
         connectedPlayers: this.clients.length,
         requiredPlayers: MIN_PLAYERS,
         maxPlayers: this.maxClients,
-        readyPlayerIds: [...this.readyIds]
+        readyPlayerIds: [...this.readyIds],
+        mapId: this.mapId
       };
       client.send("snapshot", snapshot);
       return;
