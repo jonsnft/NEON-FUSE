@@ -20,7 +20,7 @@ export function tickSimulation(state: GameState, deltaMs: number): void {
     if (!core) continue;
     exploded.add(id);
 
-    const cells = blastCells(state, core.x, core.y, state.player.blastRange);
+    const cells = blastCells(state, core.x, core.y, core.blastRange);
     for (const [x, y] of cells) {
       if (!state.blasts.some((b) => b.x === x && b.y === y)) {
         state.blasts.push({ x, y, ttlMs: BLAST_TTL_MS });
