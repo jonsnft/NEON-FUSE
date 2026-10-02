@@ -44,10 +44,16 @@ Implemented:
 - simulation unit tests
 - CI definition
 
-Still required before Phase 1 is complete:
-- explicit round/winner resolution abstraction suitable for 2+ players
+Completed after initial audit:
+- explicit multiplayer round state with `players[]`, `phase`, `winnerId` and draw handling
+- distinct safe spawns for 1–8 players
+- per-player movement/core ownership and collision rules
+
+Remaining merge gate:
 - final verification via CI/build
-- optional deterministic map fixture expansion
+
+Optional follow-up:
+- deterministic map fixture expansion
 
 ## Merge gate
 Do not merge solely because the branch is playable. Merge after CI passes and review confirms the server-authority boundary remains intact.
