@@ -38,11 +38,15 @@ export function createArenaFromMap(
     .map(({ index }) => ({ x: index % mapValue.width, y: Math.floor(index / mapValue.width) }));
 
   const pickupKinds: SimPickup["kind"][] = ["range", "capacity", "speed"];
-  const pickups: SimPickup[] = pickupKinds.flatMap((kind, i) => {
-    if (softCells.length === 0) return [];
-    const position = softCells[Math.min(softCells.length - 1, Math.floor(i * softCells.length / pickupKinds.length))];
-    return [{ ...position, kind, revealed: false }];
-  });
+  const pickupPositions =
+    softCells.length <= pickupKinds.length
+      ? softCells
+      : [softCells[0], softCells[Math.floor(softCells.length / 2)], softCells[softCells.length - 1]];
+  const pickups: SimPickup[] = pickupPositions.map((position, i) => ({
+    ...position,
+    kind: pickupKinds[i],
+    revealed: false
+  }));
 
   return {
     mapId: mapValue.id,
