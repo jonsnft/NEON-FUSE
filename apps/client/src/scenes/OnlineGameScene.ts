@@ -1,16 +1,20 @@
 import { GameObjects, Input, Scene } from "phaser";
 import {
   PROTOCOL_VERSION,
+  isSuddenDeath,
   playerById,
+  remainingRoundMs,
   type Direction,
   type GameState,
-  type MatchSnapshot
+  type MatchSnapshot,
+  type OfficialMapId
 } from "@neon-fuse/shared";
 import { MatchConnection } from "../net/MatchConnection";
 import { renderWorld } from "../render/renderWorld";
 
 interface OnlineSceneData {
   roomId?: string;
+  mapId?: OfficialMapId;
 }
 
 export class OnlineGameScene extends Scene {
@@ -25,6 +29,7 @@ export class OnlineGameScene extends Scene {
   private seq = 0;
   private connectionStatus = "CONNECTING";
   private roomId?: string;
+  private mapId: OfficialMapId = "grid-zero";
 
   constructor() {
     super("online-game");
@@ -32,6 +37,7 @@ export class OnlineGameScene extends Scene {
 
   init(data: OnlineSceneData): void {
     this.roomId = data.roomId;
+    this.mapId = data.mapId ?? "grid-zero";
   }
 
   create(): void {
@@ -68,7 +74,8 @@ export class OnlineGameScene extends Scene {
         this.connectionStatus = networkStatus;
         this.renderStatus();
       },
-      this.roomId
+      this.roomId,
+      this.mapId
     ).catch((error: unknown) => {
       this.connectionStatus = error instanceof Error ? error.message : "CONNECTION FAILED";
       this.renderStatus();
@@ -161,8 +168,9 @@ export class OnlineGameScene extends Scene {
 
     if (this.snapshot.status === "waiting") {
       const ready = selfId ? this.snapshot.readyPlayerIds.includes(selfId) : false;
+      const map = this.snapshot.mapId ?? this.mapId;
       this.status.setText(
-        `WAITING ${this.snapshot.connectedPlayers}/${this.snapshot.maxPlayers} // READY ${this.snapshot.readyPlayerIds.length}/${this.snapshot.connectedPlayers}`
+        `WAITING ${this.snapshot.connectedPlayers}/${this.snapshot.maxPlayers} // READY ${this.snapshot.readyPlayerIds.length}/${this.snapshot.connectedPlayers} // MAP ${map}`
       );
       this.help.setText(ready ? "R = UNREADY" : "R = READY");
       return;
@@ -173,26 +181,30 @@ export class OnlineGameScene extends Scene {
         ? this.state.winnerId === selfId ? "ROUND WON" : "ROUND LOST"
         : "ROUND DRAW";
       const voted = selfId ? this.snapshot.rematchPlayerIds.includes(selfId) : false;
-      this.status.setText(outcome);
+      this.status.setText(`${outcome} // MAP ${this.state?.mapId ?? this.mapId}`);
       this.help.setText(voted ? "REMATCH VOTE SENT" : "M = VOTE REMATCH");
       return;
     }
 
     const self = selfId && this.state ? playerById(this.state, selfId) : undefined;
-    if (!self) {
+    if (!self || !this.state) {
       this.status.setText(this.connectionStatus);
       this.help.setText("");
       return;
     }
 
+    const seconds = Math.ceil(remainingRoundMs(this.state) / 1000);
+    const clock = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+    const danger = isSuddenDeath(this.state) ? " // SUDDEN DEATH" : "";
+
     if (!self.alive) {
-      this.status.setText("SPECTATING // SIGNAL LOST");
+      this.status.setText(`SPECTATING // ${clock}${danger} // MAP ${this.state.mapId}`);
       this.help.setText("");
       return;
     }
 
     this.status.setText(
-      `ONLINE // RANGE ${self.blastRange}  CORES ${self.coreCapacity}  SPEED ${self.speedTier}`
+      `ONLINE // ${clock}${danger} // MAP ${this.state.mapId} // RANGE ${self.blastRange} CORES ${self.coreCapacity} SPEED ${self.speedTier}`
     );
     this.help.setText("WASD/ARROWS MOVE // SPACE CORE");
   }
