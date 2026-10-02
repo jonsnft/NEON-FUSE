@@ -1,5 +1,10 @@
 import type { PlayerPresentation } from "@neon-fuse/shared";
 
+export interface PlayerEntitlements {
+  ownedItemIds: string[];
+  presentation: PlayerPresentation;
+}
+
 export interface EntitlementProvider {
-  getPresentation(subjectId: string, rosterIndex: number): Promise<PlayerPresentation>;
+  getEntitlements(subjectId: string, rosterIndex: number): Promise<PlayerEntitlements>;
 }
