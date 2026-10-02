@@ -10,6 +10,7 @@ export class MatchConnection {
   private snapshotHandler: SnapshotHandler | null = null;
   private statusHandler: StatusHandler | null = null;
   private reconnecting = false;
+  private manualLeave = false;
 
   get playerId(): string | null {
     return this.room?.sessionId ?? null;
@@ -23,6 +24,7 @@ export class MatchConnection {
   ): Promise<void> {
     this.snapshotHandler = onSnapshot;
     this.statusHandler = onStatus;
+    this.manualLeave = false;
     onStatus("CONNECTING");
 
     const room = roomId
@@ -35,6 +37,21 @@ export class MatchConnection {
 
   send(intent: ClientIntent): void {
     this.room?.send("intent", intent);
+  }
+
+  async disconnect(): Promise<void> {
+    this.manualLeave = true;
+    this.reconnecting = false;
+
+    const room = this.room;
+    this.room = null;
+
+    try {
+      if (room) await room.leave(true);
+    } finally {
+      this.snapshotHandler = null;
+      this.statusHandler = null;
+    }
   }
 
   private bindRoom(room: Room): void {
@@ -50,22 +67,31 @@ export class MatchConnection {
     });
 
     room.onLeave((code) => {
+      if (this.manualLeave) return;
+
+      this.room = null;
       if (code === 1000) {
         this.statusHandler?.("DISCONNECTED");
         return;
       }
+
       void this.tryReconnect(reconnectionToken);
     });
   }
 
   private async tryReconnect(token: string): Promise<void> {
-    if (this.reconnecting) return;
+    if (this.reconnecting || this.manualLeave) return;
     this.reconnecting = true;
     this.statusHandler?.("RECONNECTING");
 
     for (let attempt = 1; attempt <= 3; attempt++) {
+      if (this.manualLeave) break;
       try {
         const room = await networkClient.reconnect(token);
+        if (this.manualLeave) {
+          await room.leave(true);
+          break;
+        }
         this.bindRoom(room);
         this.statusHandler?.("RECONNECTED");
         this.reconnecting = false;
@@ -76,6 +102,6 @@ export class MatchConnection {
     }
 
     this.reconnecting = false;
-    this.statusHandler?.("RECONNECT FAILED");
+    if (!this.manualLeave) this.statusHandler?.("RECONNECT FAILED");
   }
 }
