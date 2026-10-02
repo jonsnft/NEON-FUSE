@@ -17,8 +17,9 @@ export function createArenaFromMap(
     throw new Error("map does not contain enough spawn points");
   }
 
+  const mapValue = validated.value;
   const players: SimPlayer[] = playerIds.map((id, index) => {
-    const spawn = validated.value!.spawnPoints[index];
+    const spawn = mapValue.spawnPoints[index];
     return {
       id,
       x: spawn.x,
@@ -31,9 +32,9 @@ export function createArenaFromMap(
   });
 
   return {
-    width: validated.value.width,
-    height: validated.value.height,
-    tiles: [...validated.value.tiles],
+    width: mapValue.width,
+    height: mapValue.height,
+    tiles: [...mapValue.tiles],
     players,
     cores: [],
     blasts: [],
