@@ -20,6 +20,8 @@ import {
 
 const TICK_MS = 50;
 
+const isRoundFinished = (game: GameState): boolean => game.phase === "finished";
+
 export class MatchRoom extends Room {
   maxClients = HARD_MAX_PLAYERS;
 
@@ -62,7 +64,7 @@ export class MatchRoom extends Room {
       if (!this.game || this.game.phase !== "playing") return;
       tickSimulation(this.game, Math.min(deltaTime, 100));
       this.broadcastSnapshot();
-      if (this.game.phase === "finished") void this.refreshMetadata();
+      if (isRoundFinished(this.game)) void this.refreshMetadata();
     }, TICK_MS);
 
     void this.refreshMetadata();
