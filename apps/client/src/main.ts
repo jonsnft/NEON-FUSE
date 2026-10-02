@@ -1,6 +1,9 @@
 import { AUTO, Game } from "phaser";
 import "./style.css";
 import { GameScene } from "./scenes/GameScene";
+import { OnlineGameScene } from "./scenes/OnlineGameScene";
+
+const offline = new URLSearchParams(window.location.search).get("offline") === "1";
 
 new Game({
   type: AUTO,
@@ -9,5 +12,5 @@ new Game({
   height: 624,
   backgroundColor: "#071015",
   pixelArt: true,
-  scene: [GameScene]
+  scene: offline ? [GameScene] : [OnlineGameScene]
 });
