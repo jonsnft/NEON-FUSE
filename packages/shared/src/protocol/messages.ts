@@ -1,5 +1,6 @@
 import type { Direction } from "../types/game";
 import type { GameState } from "../sim/types";
+import type { PlayerPresentation } from "../cosmetics/types";
 
 export const PROTOCOL_VERSION = 1 as const;
 
@@ -24,12 +25,14 @@ export type MatchSnapshot =
       version: 1;
       status: "playing";
       game: GameState;
+      presentations: Record<string, PlayerPresentation>;
     }
   | {
       type: "match.snapshot";
       version: 1;
       status: "finished";
       game: GameState;
+      presentations: Record<string, PlayerPresentation>;
       rematchPlayerIds: string[];
     };
 

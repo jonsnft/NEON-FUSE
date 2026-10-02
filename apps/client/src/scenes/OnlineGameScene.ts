@@ -138,7 +138,7 @@ export class OnlineGameScene extends Scene {
     }
 
     this.state = snapshot.game;
-    renderWorld(this.graphics, this.state, this.connection.playerId ?? undefined);
+    renderWorld(this.graphics, this.state, this.connection.playerId ?? undefined, snapshot.presentations);
     this.renderStatus();
   }
 

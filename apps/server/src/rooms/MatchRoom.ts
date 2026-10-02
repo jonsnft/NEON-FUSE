@@ -7,7 +7,8 @@ import {
   resolveRound,
   tickSimulation,
   type GameState,
-  type MatchSnapshot
+  type MatchSnapshot,
+  type PlayerPresentation
 } from "@neon-fuse/shared";
 import { applyClientIntent } from "../intent";
 import {
@@ -17,6 +18,7 @@ import {
   everyConnectedHasVoted,
   idsExcluding
 } from "../lifecycle";
+import { LocalEntitlementProvider } from "../platform/LocalEntitlementProvider";
 
 const TICK_MS = 50;
 
@@ -29,6 +31,8 @@ export class MatchRoom extends Room {
   private readonly lastSeq = new Map<string, number>();
   private readonly readyIds = new Set<string>();
   private readonly rematchIds = new Set<string>();
+  private readonly entitlementProvider = new LocalEntitlementProvider();
+  private readonly presentations = new Map<string, PlayerPresentation>();
 
   onCreate(options: Record<string, unknown> = {}): void {
     this.maxClients = clampMaxPlayers(options.maxPlayers);
@@ -70,10 +74,17 @@ export class MatchRoom extends Room {
     void this.refreshMetadata();
   }
 
-  onJoin(client: Client): void {
+  async onJoin(client: Client): Promise<void> {
     this.lastSeq.set(client.sessionId, -1);
     this.readyIds.delete(client.sessionId);
     this.rematchIds.delete(client.sessionId);
+    this.presentations.set(
+      client.sessionId,
+      (await this.entitlementProvider.getEntitlements(
+        client.sessionId,
+        this.clients.findIndex((c) => c.sessionId === client.sessionId)
+      )).presentation
+    );
 
     if (this.game) this.sendSnapshot(client);
     else this.broadcastWaiting();
@@ -94,6 +105,7 @@ export class MatchRoom extends Room {
     this.lastSeq.delete(client.sessionId);
     this.readyIds.delete(client.sessionId);
     this.rematchIds.delete(client.sessionId);
+    this.presentations.delete(client.sessionId);
 
     if (this.game?.phase === "playing") {
       const player = playerById(this.game, client.sessionId);
@@ -180,13 +192,15 @@ export class MatchRoom extends Room {
             version: PROTOCOL_VERSION,
             status: "finished",
             game: this.game,
+            presentations: this.presentationRecord(),
             rematchPlayerIds: [...this.rematchIds]
           }
         : {
             type: "match.snapshot",
             version: PROTOCOL_VERSION,
             status: "playing",
-            game: this.game
+            game: this.game,
+            presentations: this.presentationRecord()
           };
     this.broadcast("snapshot", snapshot);
   }
@@ -213,15 +227,21 @@ export class MatchRoom extends Room {
             version: PROTOCOL_VERSION,
             status: "finished",
             game: this.game,
+            presentations: this.presentationRecord(),
             rematchPlayerIds: [...this.rematchIds]
           }
         : {
             type: "match.snapshot",
             version: PROTOCOL_VERSION,
             status: "playing",
-            game: this.game
+            game: this.game,
+            presentations: this.presentationRecord()
           };
     client.send("snapshot", snapshot);
+  }
+
+  private presentationRecord(): Record<string, PlayerPresentation> {
+    return Object.fromEntries(this.presentations.entries());
   }
 
   private async refreshMetadata(): Promise<void> {

@@ -5,3 +5,6 @@ export * from "./sim/types";
 export * from "./sim/createArena";
 export * from "./sim/actions";
 export * from "./sim/tick";
+export * from "./cosmetics/types";
+export * from "./cosmetics/catalog";
+export * from "./cosmetics/validate";
