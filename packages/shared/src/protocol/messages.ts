@@ -6,7 +6,8 @@ export const PROTOCOL_VERSION = 1 as const;
 export type ClientIntent =
   | { type: "player.move"; version: 1; seq: number; direction: Direction }
   | { type: "core.place"; version: 1; seq: number }
-  | { type: "match.ready"; version: 1 };
+  | { type: "match.ready"; version: 1; ready: boolean }
+  | { type: "match.rematch"; version: 1 };
 
 export type MatchSnapshot =
   | {
@@ -15,12 +16,21 @@ export type MatchSnapshot =
       status: "waiting";
       connectedPlayers: number;
       requiredPlayers: number;
+      maxPlayers: number;
+      readyPlayerIds: string[];
     }
   | {
       type: "match.snapshot";
       version: 1;
-      status: "playing" | "finished";
+      status: "playing";
       game: GameState;
+    }
+  | {
+      type: "match.snapshot";
+      version: 1;
+      status: "finished";
+      game: GameState;
+      rematchPlayerIds: string[];
     };
 
 export function isClientIntent(value: unknown): value is ClientIntent {
@@ -39,5 +49,9 @@ export function isClientIntent(value: unknown): value is ClientIntent {
     return Number.isInteger(candidate.seq);
   }
 
-  return candidate.type === "match.ready";
+  if (candidate.type === "match.ready") {
+    return typeof candidate.ready === "boolean";
+  }
+
+  return candidate.type === "match.rematch";
 }
