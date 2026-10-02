@@ -10,7 +10,7 @@ interface HealthResponse {
 export const server = defineServer({
   rooms: {
     lobby: defineRoom(LobbyRoom),
-    match: defineRoom(MatchRoom).enableRealtimeListing()
+    match: defineRoom(MatchRoom).filterBy(["mapId"]).enableRealtimeListing()
   },
 
   express: (app) => {
