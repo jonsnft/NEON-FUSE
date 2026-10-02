@@ -17,6 +17,7 @@ export interface SimCore {
   x: number;
   y: number;
   fuseMs: number;
+  blastRange: number;
 }
 
 export interface SimBlast {
