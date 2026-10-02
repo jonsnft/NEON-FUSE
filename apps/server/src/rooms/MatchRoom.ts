@@ -18,7 +18,7 @@ import {
   everyConnectedHasVoted,
   idsExcluding
 } from "../lifecycle";
-import { LocalEntitlementProvider } from "../platform/LocalEntitlementProvider";
+import { createPlatformServices } from "../platform/createPlatformServices";
 
 const TICK_MS = 50;
 
@@ -31,8 +31,9 @@ export class MatchRoom extends Room {
   private readonly lastSeq = new Map<string, number>();
   private readonly readyIds = new Set<string>();
   private readonly rematchIds = new Set<string>();
-  private readonly entitlementProvider = new LocalEntitlementProvider();
+  private readonly platform = createPlatformServices();
   private readonly presentations = new Map<string, PlayerPresentation>();
+  private readonly subjectIds = new Map<string, string>();
 
   onCreate(options: Record<string, unknown> = {}): void {
     this.maxClients = clampMaxPlayers(options.maxPlayers);
@@ -66,9 +67,19 @@ export class MatchRoom extends Room {
 
     this.setSimulationInterval((deltaTime) => {
       if (!this.game || this.game.phase !== "playing") return;
+      const wasPlaying = this.game.phase === "playing";
       tickSimulation(this.game, Math.min(deltaTime, 100));
       this.broadcastSnapshot();
-      if (isRoundFinished(this.game)) void this.refreshMetadata();
+      if (wasPlaying && isRoundFinished(this.game)) {
+        void this.platform.telemetry.track({
+          type: "match.finished",
+          winnerSubjectId: this.game.winnerId
+            ? this.subjectIds.get(this.game.winnerId) ?? null
+            : null,
+          playerCount: this.game.players.length
+        });
+        void this.refreshMetadata();
+      }
     }, TICK_MS);
 
     void this.refreshMetadata();
@@ -78,13 +89,16 @@ export class MatchRoom extends Room {
     this.lastSeq.set(client.sessionId, -1);
     this.readyIds.delete(client.sessionId);
     this.rematchIds.delete(client.sessionId);
+    const subject = await this.platform.identity.resolveSubject(client.sessionId);
+    this.subjectIds.set(client.sessionId, subject.subjectId);
     this.presentations.set(
       client.sessionId,
-      (await this.entitlementProvider.getEntitlements(
-        client.sessionId,
+      (await this.platform.entitlements.getEntitlements(
+        subject.subjectId,
         this.clients.findIndex((c) => c.sessionId === client.sessionId)
       )).presentation
     );
+    void this.platform.telemetry.track({ type: "player.joined", subjectId: subject.subjectId });
 
     if (this.game) this.sendSnapshot(client);
     else this.broadcastWaiting();
@@ -106,6 +120,9 @@ export class MatchRoom extends Room {
     this.readyIds.delete(client.sessionId);
     this.rematchIds.delete(client.sessionId);
     this.presentations.delete(client.sessionId);
+    const subjectId = this.subjectIds.get(client.sessionId);
+    if (subjectId) void this.platform.telemetry.track({ type: "player.left", subjectId });
+    this.subjectIds.delete(client.sessionId);
 
     if (this.game?.phase === "playing") {
       const player = playerById(this.game, client.sessionId);
@@ -146,6 +163,7 @@ export class MatchRoom extends Room {
     this.readyIds.clear();
     for (const id of ids) this.lastSeq.set(id, -1);
     void this.lock();
+    void this.platform.telemetry.track({ type: "match.started", playerCount: ids.length, rematch: false });
     this.broadcastSnapshot();
   }
 
@@ -158,6 +176,7 @@ export class MatchRoom extends Room {
     this.rematchIds.clear();
     for (const id of ids) this.lastSeq.set(id, -1);
     void this.lock();
+    void this.platform.telemetry.track({ type: "match.started", playerCount: ids.length, rematch: true });
     this.broadcastSnapshot();
   }
 
