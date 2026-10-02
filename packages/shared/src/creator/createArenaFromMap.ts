@@ -1,4 +1,5 @@
-import type { SimPlayer, GameState } from "../sim/types";
+import { GAME } from "../constants/game";
+import type { SimPickup, SimPlayer, GameState } from "../sim/types";
 import type { CreatorMapDefinition } from "./types";
 import { validateCreatorMap } from "./validateMap";
 
@@ -31,15 +32,31 @@ export function createArenaFromMap(
     };
   });
 
+  const softCells = mapValue.tiles
+    .map((tile, index) => ({ tile, index }))
+    .filter(({ tile }) => tile === "soft")
+    .map(({ index }) => ({ x: index % mapValue.width, y: Math.floor(index / mapValue.width) }));
+
+  const pickupKinds: SimPickup["kind"][] = ["range", "capacity", "speed"];
+  const pickups: SimPickup[] = pickupKinds.flatMap((kind, i) => {
+    if (softCells.length === 0) return [];
+    const position = softCells[Math.min(softCells.length - 1, Math.floor(i * softCells.length / pickupKinds.length))];
+    return [{ ...position, kind, revealed: false }];
+  });
+
   return {
+    mapId: mapValue.id,
     width: mapValue.width,
     height: mapValue.height,
     tiles: [...mapValue.tiles],
     players,
     cores: [],
     blasts: [],
-    pickups: [],
+    pickups,
     elapsedMs: 0,
+    roundDurationMs: GAME.targetMatchSeconds * 1000,
+    suddenDeathStartMs: GAME.suddenDeathStartSeconds * 1000,
+    suddenDeathCursor: 0,
     nextCoreId: 1,
     phase: "playing",
     winnerId: null
