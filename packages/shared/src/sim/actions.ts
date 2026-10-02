@@ -43,7 +43,8 @@ export function placeCore(state: GameState, fuseMs = 1800): boolean {
     ownerId: state.player.id,
     x: state.player.x,
     y: state.player.y,
-    fuseMs
+    fuseMs,
+    blastRange: state.player.blastRange
   });
   return true;
 }
