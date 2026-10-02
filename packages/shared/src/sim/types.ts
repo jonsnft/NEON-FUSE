@@ -35,6 +35,7 @@ export interface SimPickup {
 }
 
 export interface GameState {
+  mapId: string;
   width: number;
   height: number;
   tiles: TileKind[];
@@ -43,6 +44,9 @@ export interface GameState {
   blasts: SimBlast[];
   pickups: SimPickup[];
   elapsedMs: number;
+  roundDurationMs: number;
+  suddenDeathStartMs: number;
+  suddenDeathCursor: number;
   nextCoreId: number;
   phase: RoundPhase;
   winnerId: string | null;
@@ -56,3 +60,9 @@ export const tileAt = (state: GameState, x: number, y: number): TileKind =>
 
 export const playerById = (state: GameState, playerId: string): SimPlayer | undefined =>
   state.players.find((player) => player.id === playerId);
+
+export const remainingRoundMs = (state: GameState): number =>
+  Math.max(0, state.roundDurationMs - state.elapsedMs);
+
+export const isSuddenDeath = (state: GameState): boolean =>
+  state.phase === "playing" && state.elapsedMs >= state.suddenDeathStartMs;
