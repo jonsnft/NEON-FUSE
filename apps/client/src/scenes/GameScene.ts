@@ -1,4 +1,4 @@
-import Phaser from "phaser";
+import { GameObjects, Input, Scene } from "phaser";
 import {
   createArena,
   indexOf,
@@ -13,11 +13,11 @@ import {
 const TILE = 48;
 const LOCAL_PLAYER = "local-player";
 
-export class GameScene extends Phaser.Scene {
+export class GameScene extends Scene {
   private state!: GameState;
-  private graphics!: Phaser.GameObjects.Graphics;
-  private status!: Phaser.GameObjects.Text;
-  private keys!: Record<string, Phaser.Input.Keyboard.Key>;
+  private graphics!: GameObjects.Graphics;
+  private status!: GameObjects.Text;
+  private keys!: Record<string, Input.Keyboard.Key>;
   private nextMoveAt = 0;
 
   constructor() {
@@ -36,27 +36,27 @@ export class GameScene extends Phaser.Scene {
     if (!this.input.keyboard) throw new Error("Keyboard input unavailable");
 
     this.keys = this.input.keyboard.addKeys({
-      up: Phaser.Input.Keyboard.KeyCodes.UP,
-      down: Phaser.Input.Keyboard.KeyCodes.DOWN,
-      left: Phaser.Input.Keyboard.KeyCodes.LEFT,
-      right: Phaser.Input.Keyboard.KeyCodes.RIGHT,
-      w: Phaser.Input.Keyboard.KeyCodes.W,
-      s: Phaser.Input.Keyboard.KeyCodes.S,
-      a: Phaser.Input.Keyboard.KeyCodes.A,
-      d: Phaser.Input.Keyboard.KeyCodes.D,
-      core: Phaser.Input.Keyboard.KeyCodes.SPACE,
-      reset: Phaser.Input.Keyboard.KeyCodes.R
-    }) as Record<string, Phaser.Input.Keyboard.Key>;
+      up: Input.Keyboard.KeyCodes.UP,
+      down: Input.Keyboard.KeyCodes.DOWN,
+      left: Input.Keyboard.KeyCodes.LEFT,
+      right: Input.Keyboard.KeyCodes.RIGHT,
+      w: Input.Keyboard.KeyCodes.W,
+      s: Input.Keyboard.KeyCodes.S,
+      a: Input.Keyboard.KeyCodes.A,
+      d: Input.Keyboard.KeyCodes.D,
+      core: Input.Keyboard.KeyCodes.SPACE,
+      reset: Input.Keyboard.KeyCodes.R
+    }) as Record<string, Input.Keyboard.Key>;
 
     this.renderState();
   }
 
   update(time: number, delta: number): void {
-    if (Phaser.Input.Keyboard.JustDown(this.keys.reset)) {
+    if (Input.Keyboard.JustDown(this.keys.reset)) {
       this.state = createArena([LOCAL_PLAYER]);
     }
 
-    if (Phaser.Input.Keyboard.JustDown(this.keys.core)) {
+    if (Input.Keyboard.JustDown(this.keys.core)) {
       placeCore(this.state, LOCAL_PLAYER);
     }
 
