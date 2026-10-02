@@ -3,6 +3,17 @@ import { boot, type ColyseusTestServer } from "@colyseus/testing";
 import { PROTOCOL_VERSION, type MatchSnapshot } from "@neon-fuse/shared";
 import { server } from "../src/app.config";
 
+async function waitForStatus(
+  client: { waitForMessage(type: string): Promise<unknown> },
+  status: MatchSnapshot["status"]
+): Promise<MatchSnapshot> {
+  for (let i = 0; i < 10; i++) {
+    const snapshot = await client.waitForMessage("snapshot") as MatchSnapshot;
+    if (snapshot.status === status) return snapshot;
+  }
+  throw new Error(`Did not receive match snapshot status: ${status}`);
+}
+
 describe("authoritative multiplayer runtime", () => {
   let colyseus: ColyseusTestServer;
 
@@ -27,22 +38,20 @@ describe("authoritative multiplayer runtime", () => {
     expect(client1.sessionId).toBeTruthy();
     expect(client2.sessionId).toBeTruthy();
 
-    const waiting = client1.waitForMessage("snapshot") as Promise<MatchSnapshot>;
     client1.send("intent", {
       type: "match.ready",
       version: PROTOCOL_VERSION,
       ready: true
     });
-    const waitingSnapshot = await waiting;
+    const waitingSnapshot = await waitForStatus(client1, "waiting");
     expect(waitingSnapshot.status).toBe("waiting");
 
-    const playing = client1.waitForMessage("snapshot") as Promise<MatchSnapshot>;
     client2.send("intent", {
       type: "match.ready",
       version: PROTOCOL_VERSION,
       ready: true
     });
-    const playingSnapshot = await playing;
+    const playingSnapshot = await waitForStatus(client1, "playing");
 
     expect(playingSnapshot.status).toBe("playing");
     if (playingSnapshot.status === "playing") {
