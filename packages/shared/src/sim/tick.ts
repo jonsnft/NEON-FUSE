@@ -8,6 +8,8 @@ export function tickSimulation(state: GameState, deltaMs: number): void {
   for (const blast of state.blasts) blast.ttlMs -= deltaMs;
   state.blasts = state.blasts.filter((blast) => blast.ttlMs > 0);
 
+  if (state.phase !== "playing") return;
+
   for (const core of state.cores) core.fuseMs -= deltaMs;
 
   const queue = state.cores.filter((core) => core.fuseMs <= 0).map((core) => core.id);
@@ -31,13 +33,23 @@ export function tickSimulation(state: GameState, deltaMs: number): void {
       );
       if (chained) queue.push(chained.id);
 
-      if (state.player.alive && state.player.x === x && state.player.y === y) {
-        state.player.alive = false;
+      for (const player of state.players) {
+        if (player.alive && player.x === x && player.y === y) player.alive = false;
       }
     }
   }
 
   state.cores = state.cores.filter((core) => !exploded.has(core.id));
+  resolveRound(state);
+}
+
+export function resolveRound(state: GameState): void {
+  if (state.phase !== "playing" || state.players.length < 2) return;
+  const alive = state.players.filter((player) => player.alive);
+  if (alive.length <= 1) {
+    state.phase = "finished";
+    state.winnerId = alive[0]?.id ?? null;
+  }
 }
 
 function blastCells(state: GameState, originX: number, originY: number, range: number): Array<[number, number]> {
