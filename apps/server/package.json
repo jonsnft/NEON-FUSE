@@ -8,7 +8,7 @@
     "start": "tsx src/index.ts",
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run --pool=threads"
   },
   "dependencies": {
     "@colyseus/tools": "^0.17.0",
@@ -16,6 +16,7 @@
     "colyseus": "^0.17.0"
   },
   "devDependencies": {
+    "@colyseus/testing": "^0.17.11",
     "tsx": "^4.20.5",
     "typescript": "~5.7.2",
     "vitest": "^3.2.4"
