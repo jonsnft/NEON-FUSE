@@ -1,0 +1,21 @@
+{
+  "name": "@neon-fuse/client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@neon-fuse/shared": "workspace:*",
+    "phaser": "4.0.0"
+  },
+  "devDependencies": {
+    "typescript": "~5.7.2",
+    "vite": "^6.3.1",
+    "vitest": "^3.2.4"
+  }
+}
