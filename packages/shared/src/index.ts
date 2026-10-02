@@ -13,3 +13,4 @@ export * from "./creator/types";
 export * from "./creator/validateMap";
 export * from "./creator/validateCosmetic";
 export * from "./creator/createArenaFromMap";
+export * from "./maps/official";
