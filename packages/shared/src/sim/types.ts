@@ -1,5 +1,6 @@
 export type TileKind = "floor" | "hard" | "soft";
 export type PickupKind = "range" | "capacity" | "speed";
+export type RoundPhase = "playing" | "finished";
 
 export interface SimPlayer {
   id: string;
@@ -37,12 +38,14 @@ export interface GameState {
   width: number;
   height: number;
   tiles: TileKind[];
-  player: SimPlayer;
+  players: SimPlayer[];
   cores: SimCore[];
   blasts: SimBlast[];
   pickups: SimPickup[];
   elapsedMs: number;
   nextCoreId: number;
+  phase: RoundPhase;
+  winnerId: string | null;
 }
 
 export const indexOf = (state: Pick<GameState, "width">, x: number, y: number) =>
@@ -50,3 +53,6 @@ export const indexOf = (state: Pick<GameState, "width">, x: number, y: number) =
 
 export const tileAt = (state: GameState, x: number, y: number): TileKind =>
   state.tiles[indexOf(state, x, y)];
+
+export const playerById = (state: GameState, playerId: string): SimPlayer | undefined =>
+  state.players.find((player) => player.id === playerId);
