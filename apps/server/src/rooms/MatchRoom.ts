@@ -80,7 +80,10 @@ export class MatchRoom extends Room {
     this.rematchIds.delete(client.sessionId);
     this.presentations.set(
       client.sessionId,
-      await this.entitlementProvider.getPresentation(client.sessionId, this.clients.findIndex((c) => c.sessionId === client.sessionId))
+      (await this.entitlementProvider.getEntitlements(
+        client.sessionId,
+        this.clients.findIndex((c) => c.sessionId === client.sessionId)
+      )).presentation
     );
 
     if (this.game) this.sendSnapshot(client);
