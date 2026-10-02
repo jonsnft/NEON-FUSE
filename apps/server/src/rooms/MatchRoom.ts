@@ -10,16 +10,15 @@ import {
   type MatchSnapshot
 } from "@neon-fuse/shared";
 import { applyClientIntent } from "../intent";
+import {
+  HARD_MAX_PLAYERS,
+  MIN_PLAYERS,
+  clampMaxPlayers,
+  everyConnectedHasVoted,
+  idsExcluding
+} from "../lifecycle";
 
-const MIN_PLAYERS = 2;
-const HARD_MAX_PLAYERS = 8;
 const TICK_MS = 50;
-
-const clampMaxPlayers = (value: unknown): number => {
-  const requested = Number(value);
-  if (!Number.isFinite(requested)) return HARD_MAX_PLAYERS;
-  return Math.min(HARD_MAX_PLAYERS, Math.max(MIN_PLAYERS, Math.floor(requested)));
-};
 
 export class MatchRoom extends Room {
   maxClients = HARD_MAX_PLAYERS;
@@ -102,14 +101,22 @@ export class MatchRoom extends Room {
       }
       this.broadcastSnapshot();
     } else if (this.game?.phase === "finished") {
-      if (this.clients.length < MIN_PLAYERS) {
+      const remainingIds = idsExcluding(
+        this.clients.map((connected) => connected.sessionId),
+        client.sessionId
+      );
+      if (remainingIds.length < MIN_PLAYERS) {
         this.resetToWaiting();
       } else {
-        this.tryStartRematch();
+        this.tryStartRematch(remainingIds);
         this.broadcastSnapshot();
       }
     } else {
-      this.broadcastWaiting(Math.max(0, this.clients.length - 1));
+      const remainingIds = idsExcluding(
+        this.clients.map((connected) => connected.sessionId),
+        client.sessionId
+      );
+      this.broadcastWaiting(remainingIds.length);
     }
 
     void this.refreshMetadata();
@@ -118,7 +125,7 @@ export class MatchRoom extends Room {
   private tryStartRound(): void {
     if (this.game || this.clients.length < MIN_PLAYERS) return;
     const ids = this.clients.map((client) => client.sessionId);
-    if (!ids.every((id) => this.readyIds.has(id))) return;
+    if (!everyConnectedHasVoted(ids, this.readyIds)) return;
 
     this.game = createArena(ids);
     this.rematchIds.clear();
@@ -128,10 +135,10 @@ export class MatchRoom extends Room {
     this.broadcastSnapshot();
   }
 
-  private tryStartRematch(): void {
-    if (this.game?.phase !== "finished" || this.clients.length < MIN_PLAYERS) return;
-    const ids = this.clients.map((client) => client.sessionId);
-    if (!ids.every((id) => this.rematchIds.has(id))) return;
+  private tryStartRematch(roster?: string[]): void {
+    if (this.game?.phase !== "finished") return;
+    const ids = roster ?? this.clients.map((client) => client.sessionId);
+    if (!everyConnectedHasVoted(ids, this.rematchIds)) return;
 
     this.game = createArena(ids);
     this.rematchIds.clear();
