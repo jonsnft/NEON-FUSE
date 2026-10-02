@@ -4,12 +4,14 @@ import {
   indexOf,
   movePlayer,
   placeCore,
+  playerById,
   tickSimulation,
   type Direction,
   type GameState
 } from "@neon-fuse/shared";
 
 const TILE = 48;
+const LOCAL_PLAYER = "local-player";
 
 export class GameScene extends Phaser.Scene {
   private state!: GameState;
@@ -23,7 +25,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   create(): void {
-    this.state = createArena();
+    this.state = createArena([LOCAL_PLAYER]);
     this.graphics = this.add.graphics();
     this.status = this.add.text(10, 8, "", {
       fontFamily: "monospace",
@@ -51,17 +53,18 @@ export class GameScene extends Phaser.Scene {
 
   update(time: number, delta: number): void {
     if (Phaser.Input.Keyboard.JustDown(this.keys.reset)) {
-      this.state = createArena();
+      this.state = createArena([LOCAL_PLAYER]);
     }
 
     if (Phaser.Input.Keyboard.JustDown(this.keys.core)) {
-      placeCore(this.state);
+      placeCore(this.state, LOCAL_PLAYER);
     }
 
+    const player = playerById(this.state, LOCAL_PLAYER);
     const direction = this.heldDirection();
-    const moveDelay = Math.max(55, 130 - this.state.player.speedTier * 15);
+    const moveDelay = Math.max(55, 130 - (player?.speedTier ?? 0) * 15);
     if (direction && time >= this.nextMoveAt) {
-      movePlayer(this.state, direction);
+      movePlayer(this.state, LOCAL_PLAYER, direction);
       this.nextMoveAt = time + moveDelay;
     }
 
@@ -116,19 +119,16 @@ export class GameScene extends Phaser.Scene {
       g.fillRect(blast.x * TILE + 4, blast.y * TILE + 4, TILE - 8, TILE - 8);
     }
 
-    if (this.state.player.alive) {
+    for (const player of this.state.players) {
+      if (!player.alive) continue;
       g.fillStyle(0xe9ff70, 1);
-      g.fillRect(
-        this.state.player.x * TILE + 10,
-        this.state.player.y * TILE + 10,
-        TILE - 20,
-        TILE - 20
-      );
+      g.fillRect(player.x * TILE + 10, player.y * TILE + 10, TILE - 20, TILE - 20);
     }
 
+    const player = playerById(this.state, LOCAL_PLAYER);
     this.status.setText(
-      this.state.player.alive
-        ? `RANGE ${this.state.player.blastRange}  CORES ${this.state.player.coreCapacity}  SPEED ${this.state.player.speedTier}`
+      player?.alive
+        ? `RANGE ${player.blastRange}  CORES ${player.coreCapacity}  SPEED ${player.speedTier}`
         : "SIGNAL LOST // PRESS R TO REBOOT"
     );
   }
