@@ -92,8 +92,13 @@ export class MatchRoom extends Room {
     void this.refreshMetadata();
   }
 
-  onDrop(client: Client): void {
-    this.allowReconnection(client, 10);
+  async onDrop(client: Client): Promise<void> {
+    try {
+      await this.allowReconnection(client, 10);
+    } catch (error) {
+      if (error instanceof Error && error.message === "disposing") return;
+      throw error;
+    }
   }
 
   onReconnect(client: Client): void {
