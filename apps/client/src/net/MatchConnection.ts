@@ -1,5 +1,5 @@
 import type { Room } from "@colyseus/sdk";
-import type { ClientIntent, MatchSnapshot } from "@neon-fuse/shared";
+import type { ClientIntent, MatchSnapshot, OfficialMapId } from "@neon-fuse/shared";
 import { networkClient } from "./NetworkSession";
 
 type SnapshotHandler = (snapshot: MatchSnapshot) => void;
@@ -18,7 +18,8 @@ export class MatchConnection {
   async connect(
     onSnapshot: SnapshotHandler,
     onStatus: StatusHandler,
-    roomId?: string
+    roomId?: string,
+    mapId: OfficialMapId = "grid-zero"
   ): Promise<void> {
     this.snapshotHandler = onSnapshot;
     this.statusHandler = onStatus;
@@ -26,7 +27,7 @@ export class MatchConnection {
 
     const room = roomId
       ? await networkClient.joinById(roomId)
-      : await networkClient.joinOrCreate("match", { maxPlayers: 8 });
+      : await networkClient.joinOrCreate("match", { maxPlayers: 8, mapId });
 
     this.bindRoom(room);
     onStatus("CONNECTED");
