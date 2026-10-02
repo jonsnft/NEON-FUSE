@@ -1,4 +1,5 @@
-import type { SimPlayer, GameState } from "../sim/types";
+import { GAME } from "../constants/game";
+import type { SimPickup, SimPlayer, GameState } from "../sim/types";
 import type { CreatorMapDefinition } from "./types";
 import { validateCreatorMap } from "./validateMap";
 
@@ -31,15 +32,35 @@ export function createArenaFromMap(
     };
   });
 
+  const softCells = mapValue.tiles
+    .map((tile, index) => ({ tile, index }))
+    .filter(({ tile }) => tile === "soft")
+    .map(({ index }) => ({ x: index % mapValue.width, y: Math.floor(index / mapValue.width) }));
+
+  const pickupKinds: SimPickup["kind"][] = ["range", "capacity", "speed"];
+  const pickupPositions =
+    softCells.length <= pickupKinds.length
+      ? softCells
+      : [softCells[0], softCells[Math.floor(softCells.length / 2)], softCells[softCells.length - 1]];
+  const pickups: SimPickup[] = pickupPositions.map((position, i) => ({
+    ...position,
+    kind: pickupKinds[i],
+    revealed: false
+  }));
+
   return {
+    mapId: mapValue.id,
     width: mapValue.width,
     height: mapValue.height,
     tiles: [...mapValue.tiles],
     players,
     cores: [],
     blasts: [],
-    pickups: [],
+    pickups,
     elapsedMs: 0,
+    roundDurationMs: GAME.targetMatchSeconds * 1000,
+    suddenDeathStartMs: GAME.suddenDeathStartSeconds * 1000,
+    suddenDeathCursor: 0,
     nextCoreId: 1,
     phase: "playing",
     winnerId: null

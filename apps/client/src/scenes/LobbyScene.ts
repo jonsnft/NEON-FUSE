@@ -1,4 +1,9 @@
 import { GameObjects, Input, Scene } from "phaser";
+import {
+  OFFICIAL_MAP_IDS,
+  OFFICIAL_MAPS,
+  type OfficialMapId
+} from "@neon-fuse/shared";
 import { LobbyConnection, type LobbyRoomInfo } from "../net/LobbyConnection";
 
 export class LobbyScene extends Scene {
@@ -8,6 +13,8 @@ export class LobbyScene extends Scene {
   private list!: GameObjects.Text;
   private status!: GameObjects.Text;
   private keys!: Record<string, Input.Keyboard.Key>;
+  private selectedMapIndex = 0;
+  private connected = false;
 
   constructor() {
     super("lobby");
@@ -36,6 +43,7 @@ export class LobbyScene extends Scene {
     if (!this.input.keyboard) throw new Error("Keyboard input unavailable");
     this.keys = this.input.keyboard.addKeys({
       quick: Input.Keyboard.KeyCodes.Q,
+      map: Input.Keyboard.KeyCodes.M,
       one: Input.Keyboard.KeyCodes.ONE,
       two: Input.Keyboard.KeyCodes.TWO,
       three: Input.Keyboard.KeyCodes.THREE,
@@ -52,8 +60,10 @@ export class LobbyScene extends Scene {
         .slice(0, 7);
       this.renderRooms();
     }).then(() => {
-      this.status.setText("Q QUICK MATCH // 1-7 JOIN ROOM // S ITEM CATALOG");
+      this.connected = true;
+      this.renderHelp();
     }).catch((error: unknown) => {
+      this.connected = false;
       this.status.setText(error instanceof Error ? error.message : "LOBBY CONNECTION FAILED");
     });
 
@@ -63,6 +73,12 @@ export class LobbyScene extends Scene {
   update(): void {
     if (Input.Keyboard.JustDown(this.keys.store)) {
       this.scene.start("store-preview");
+      return;
+    }
+
+    if (Input.Keyboard.JustDown(this.keys.map)) {
+      this.selectedMapIndex = (this.selectedMapIndex + 1) % OFFICIAL_MAP_IDS.length;
+      this.renderHelp();
       return;
     }
 
@@ -80,8 +96,23 @@ export class LobbyScene extends Scene {
     }
   }
 
+  private get selectedMapId(): OfficialMapId {
+    return OFFICIAL_MAP_IDS[this.selectedMapIndex];
+  }
+
   private startMatch(roomId?: string): void {
-    this.scene.start("online-game", { roomId });
+    this.scene.start("online-game", {
+      roomId,
+      mapId: this.selectedMapId
+    });
+  }
+
+  private renderHelp(): void {
+    if (!this.connected) return;
+    const map = OFFICIAL_MAPS[this.selectedMapId];
+    this.status.setText(
+      `Q QUICK MATCH // 1-7 JOIN ROOM // M MAP: ${map.displayName.toUpperCase()} // S ITEMS`
+    );
   }
 
   private renderRooms(): void {
@@ -96,7 +127,8 @@ export class LobbyScene extends Scene {
         const players = room.metadata?.connectedPlayers ?? room.clients;
         const max = room.metadata?.maxPlayers ?? room.maxClients;
         const ready = room.metadata?.readyPlayers ?? 0;
-        return `[${index + 1}] ${room.roomId.slice(0, 8)}  ${phase.toUpperCase()}  ${players}/${max}  READY:${ready}`;
+        const map = room.metadata?.mapId ?? "grid-zero";
+        return `[${index + 1}] ${room.roomId.slice(0, 8)}  ${phase.toUpperCase()}  ${players}/${max}  READY:${ready}  MAP:${map}`;
       }).join("\n")
     );
   }

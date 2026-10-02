@@ -1,14 +1,16 @@
 import { Client, Room } from "colyseus";
 import {
   PROTOCOL_VERSION,
-  createArena,
+  createOfficialArena,
+  normalizeOfficialMapId,
   isClientIntent,
   playerById,
   resolveRound,
   tickSimulation,
   type GameState,
   type MatchSnapshot,
-  type PlayerPresentation
+  type PlayerPresentation,
+  type OfficialMapId
 } from "@neon-fuse/shared";
 import { applyClientIntent } from "../intent";
 import {
@@ -34,9 +36,11 @@ export class MatchRoom extends Room {
   private readonly platform = createPlatformServices();
   private readonly presentations = new Map<string, PlayerPresentation>();
   private readonly subjectIds = new Map<string, string>();
+  private mapId: OfficialMapId = "grid-zero";
 
   onCreate(options: Record<string, unknown> = {}): void {
     this.maxClients = clampMaxPlayers(options.maxPlayers);
+    this.mapId = normalizeOfficialMapId(options.mapId);
 
     this.onMessage("intent", (client, payload: unknown) => {
       if (!isClientIntent(payload)) return;
@@ -158,7 +162,7 @@ export class MatchRoom extends Room {
     const ids = this.clients.map((client) => client.sessionId);
     if (!everyConnectedHasVoted(ids, this.readyIds)) return;
 
-    this.game = createArena(ids);
+    this.game = createOfficialArena(this.mapId, ids);
     this.rematchIds.clear();
     this.readyIds.clear();
     for (const id of ids) this.lastSeq.set(id, -1);
@@ -172,7 +176,7 @@ export class MatchRoom extends Room {
     const ids = roster ?? this.clients.map((client) => client.sessionId);
     if (!everyConnectedHasVoted(ids, this.rematchIds)) return;
 
-    this.game = createArena(ids);
+    this.game = createOfficialArena(this.mapId, ids);
     this.rematchIds.clear();
     for (const id of ids) this.lastSeq.set(id, -1);
     void this.lock();
@@ -197,7 +201,8 @@ export class MatchRoom extends Room {
       connectedPlayers,
       requiredPlayers: MIN_PLAYERS,
       maxPlayers: this.maxClients,
-      readyPlayerIds: [...this.readyIds]
+      readyPlayerIds: [...this.readyIds],
+      mapId: this.mapId
     };
     this.broadcast("snapshot", snapshot);
   }
@@ -233,7 +238,8 @@ export class MatchRoom extends Room {
         connectedPlayers: this.clients.length,
         requiredPlayers: MIN_PLAYERS,
         maxPlayers: this.maxClients,
-        readyPlayerIds: [...this.readyIds]
+        readyPlayerIds: [...this.readyIds],
+        mapId: this.mapId
       };
       client.send("snapshot", snapshot);
       return;
@@ -268,7 +274,8 @@ export class MatchRoom extends Room {
       phase: !this.game ? "waiting" : this.game.phase,
       maxPlayers: this.maxClients,
       connectedPlayers: this.clients.length,
-      readyPlayers: this.readyIds.size
+      readyPlayers: this.readyIds.size,
+      mapId: this.mapId
     });
   }
 }

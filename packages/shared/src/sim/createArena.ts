@@ -75,6 +75,7 @@ export function createArena(playerIds: string[] = ["local-player"]): GameState {
   });
 
   return {
+    mapId: "grid-zero",
     width,
     height,
     tiles,
@@ -83,6 +84,9 @@ export function createArena(playerIds: string[] = ["local-player"]): GameState {
     blasts: [],
     pickups: pickupPlan.filter((p) => !safe.has(`${p.x},${p.y}`)).map((p) => ({ ...p })),
     elapsedMs: 0,
+    roundDurationMs: GAME.targetMatchSeconds * 1000,
+    suddenDeathStartMs: GAME.suddenDeathStartSeconds * 1000,
+    suddenDeathCursor: 0,
     nextCoreId: 1,
     phase: "playing",
     winnerId: null
