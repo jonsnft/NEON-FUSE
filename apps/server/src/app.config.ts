@@ -1,6 +1,12 @@
 import { LobbyRoom, defineRoom, defineServer } from "colyseus";
 import { MatchRoom } from "./rooms/MatchRoom";
 
+interface HealthResponse {
+  status(code: number): {
+    json(body: Record<string, unknown>): unknown;
+  };
+}
+
 export const server = defineServer({
   rooms: {
     lobby: defineRoom(LobbyRoom),
@@ -8,7 +14,7 @@ export const server = defineServer({
   },
 
   express: (app) => {
-    app.get("/healthz", (_request, response) => {
+    app.get("/healthz", (_request: unknown, response: HealthResponse) => {
       response.status(200).json({
         ok: true,
         service: "neon-fuse",
