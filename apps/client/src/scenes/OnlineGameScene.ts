@@ -11,6 +11,7 @@ import {
 } from "@neon-fuse/shared";
 import { MatchConnection } from "../net/MatchConnection";
 import { renderWorld } from "../render/renderWorld";
+import { Sfx } from "../audio/Sfx";
 
 interface OnlineSceneData {
   roomId?: string;
@@ -30,6 +31,9 @@ export class OnlineGameScene extends Scene {
   private connectionStatus = "CONNECTING";
   private roomId?: string;
   private mapId: OfficialMapId = "grid-zero";
+  private readonly sfx = new Sfx();
+  private previousGame: GameState | null = null;
+  private suddenDeathAnnounced = false;
 
   constructor() {
     super("online-game");
@@ -144,9 +148,36 @@ export class OnlineGameScene extends Scene {
       return;
     }
 
+    this.playSnapshotCues(snapshot.game, snapshot.status);
     this.state = snapshot.game;
     renderWorld(this.graphics, this.state, this.connection.playerId ?? undefined, snapshot.presentations);
+    this.previousGame = structuredClone(snapshot.game);
     this.renderStatus();
+  }
+
+  private playSnapshotCues(game: GameState, status: "playing" | "finished"): void {
+    const previous = this.previousGame;
+
+    if (previous) {
+      if (game.cores.length > previous.cores.length) this.sfx.core();
+      if (game.blasts.length > previous.blasts.length) this.sfx.blast();
+    }
+
+    if (isSuddenDeath(game) && !this.suddenDeathAnnounced) {
+      this.suddenDeathAnnounced = true;
+      this.sfx.warning();
+    }
+
+    if (status === "finished" && previous?.phase === "playing") {
+      const selfId = this.connection.playerId;
+      if (!game.winnerId) this.sfx.draw();
+      else if (game.winnerId === selfId) this.sfx.victory();
+      else this.sfx.defeat();
+    }
+
+    if (status === "playing" && previous?.phase === "finished") {
+      this.suddenDeathAnnounced = false;
+    }
   }
 
   private heldDirection(): Direction | null {
