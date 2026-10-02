@@ -19,4 +19,5 @@ export interface CoreState extends GridPosition {
   id: string;
   ownerId: PlayerId;
   explodeAtMs: number;
+  blastRange: number;
 }
