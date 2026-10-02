@@ -10,7 +10,7 @@ import {
 const validMap = (): CreatorMapDefinition => {
   const width = 9;
   const height = 9;
-  const tiles = Array.from({ length: width * height }, () => "floor" as const);
+  const tiles: CreatorMapDefinition["tiles"] = Array.from({ length: width * height }, () => "floor");
   const index = (x: number, y: number) => y * width + x;
 
   for (let x = 0; x < width; x++) {
