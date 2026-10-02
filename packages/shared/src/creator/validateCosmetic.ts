@@ -34,9 +34,10 @@ export function validateCreatorCosmetic(input: unknown): ValidationResult<Creato
   if (typeof input.visualToken !== "string" || !TOKEN.test(input.visualToken)) {
     errors.push("visualToken must be a safe slug of at most 48 characters");
   }
-  if (!Number.isInteger(input.requestedPriceShells) ||
-      Number(input.requestedPriceShells) < 1 ||
-      Number(input.requestedPriceShells) > 100000) {
+  if (typeof input.requestedPriceShells !== "number" ||
+      !Number.isInteger(input.requestedPriceShells) ||
+      input.requestedPriceShells < 1 ||
+      input.requestedPriceShells > 100000) {
     errors.push("requestedPriceShells must be an integer between 1 and 100000");
   }
 
