@@ -8,3 +8,7 @@ export * from "./sim/tick";
 export * from "./cosmetics/types";
 export * from "./cosmetics/catalog";
 export * from "./cosmetics/validate";
+export * from "./creator/types";
+export * from "./creator/validateMap";
+export * from "./creator/validateCosmetic";
+export * from "./creator/createArenaFromMap";
