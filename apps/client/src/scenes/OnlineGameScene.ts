@@ -9,18 +9,29 @@ import {
 import { MatchConnection } from "../net/MatchConnection";
 import { renderWorld } from "../render/renderWorld";
 
+interface OnlineSceneData {
+  roomId?: string;
+}
+
 export class OnlineGameScene extends Scene {
   private state: GameState | null = null;
+  private snapshot: MatchSnapshot | null = null;
   private connection = new MatchConnection();
   private graphics!: GameObjects.Graphics;
   private status!: GameObjects.Text;
+  private help!: GameObjects.Text;
   private keys!: Record<string, Input.Keyboard.Key>;
   private nextMoveAt = 0;
   private seq = 0;
   private connectionStatus = "CONNECTING";
+  private roomId?: string;
 
   constructor() {
     super("online-game");
+  }
+
+  init(data: OnlineSceneData): void {
+    this.roomId = data.roomId;
   }
 
   create(): void {
@@ -29,6 +40,11 @@ export class OnlineGameScene extends Scene {
       fontFamily: "monospace",
       fontSize: "14px",
       color: "#dff"
+    }).setDepth(10);
+    this.help = this.add.text(10, 32, "", {
+      fontFamily: "monospace",
+      fontSize: "13px",
+      color: "#e9ff70"
     }).setDepth(10);
 
     if (!this.input.keyboard) throw new Error("Keyboard input unavailable");
@@ -41,7 +57,9 @@ export class OnlineGameScene extends Scene {
       s: Input.Keyboard.KeyCodes.S,
       a: Input.Keyboard.KeyCodes.A,
       d: Input.Keyboard.KeyCodes.D,
-      core: Input.Keyboard.KeyCodes.SPACE
+      core: Input.Keyboard.KeyCodes.SPACE,
+      ready: Input.Keyboard.KeyCodes.R,
+      rematch: Input.Keyboard.KeyCodes.M
     }) as Record<string, Input.Keyboard.Key>;
 
     void this.connection.connect(
@@ -49,7 +67,8 @@ export class OnlineGameScene extends Scene {
       (networkStatus) => {
         this.connectionStatus = networkStatus;
         this.renderStatus();
-      }
+      },
+      this.roomId
     ).catch((error: unknown) => {
       this.connectionStatus = error instanceof Error ? error.message : "CONNECTION FAILED";
       this.renderStatus();
@@ -57,9 +76,34 @@ export class OnlineGameScene extends Scene {
   }
 
   update(time: number): void {
+    if (this.snapshot?.status === "waiting") {
+      if (Input.Keyboard.JustDown(this.keys.ready)) {
+        const selfId = this.connection.playerId;
+        const ready = selfId ? !this.snapshot.readyPlayerIds.includes(selfId) : true;
+        this.connection.send({
+          type: "match.ready",
+          version: PROTOCOL_VERSION,
+          ready
+        });
+      }
+      return;
+    }
+
+    if (this.snapshot?.status === "finished") {
+      if (Input.Keyboard.JustDown(this.keys.rematch)) {
+        this.connection.send({
+          type: "match.rematch",
+          version: PROTOCOL_VERSION
+        });
+      }
+      return;
+    }
+
     if (!this.state || this.state.phase !== "playing") return;
     const selfId = this.connection.playerId;
     if (!selfId) return;
+    const self = playerById(this.state, selfId);
+    if (!self?.alive) return;
 
     if (Input.Keyboard.JustDown(this.keys.core)) {
       this.connection.send({
@@ -69,9 +113,8 @@ export class OnlineGameScene extends Scene {
       });
     }
 
-    const player = playerById(this.state, selfId);
     const direction = this.heldDirection();
-    const moveDelay = Math.max(55, 130 - (player?.speedTier ?? 0) * 15);
+    const moveDelay = Math.max(55, 130 - self.speedTier * 15);
 
     if (direction && time >= this.nextMoveAt) {
       this.connection.send({
@@ -85,9 +128,10 @@ export class OnlineGameScene extends Scene {
   }
 
   private acceptSnapshot(snapshot: MatchSnapshot): void {
+    this.snapshot = snapshot;
+
     if (snapshot.status === "waiting") {
       this.state = null;
-      this.connectionStatus = `WAITING ${snapshot.connectedPlayers}/${snapshot.requiredPlayers}`;
       this.graphics.clear();
       this.renderStatus();
       return;
@@ -107,30 +151,49 @@ export class OnlineGameScene extends Scene {
   }
 
   private renderStatus(): void {
-    if (!this.state) {
+    const selfId = this.connection.playerId;
+
+    if (!this.snapshot) {
       this.status.setText(this.connectionStatus);
+      this.help.setText("");
       return;
     }
 
-    if (this.state.phase === "finished") {
+    if (this.snapshot.status === "waiting") {
+      const ready = selfId ? this.snapshot.readyPlayerIds.includes(selfId) : false;
       this.status.setText(
-        this.state.winnerId
-          ? this.state.winnerId === this.connection.playerId
-            ? "ROUND WON"
-            : "ROUND LOST"
-          : "ROUND DRAW"
+        `WAITING ${this.snapshot.connectedPlayers}/${this.snapshot.maxPlayers} // READY ${this.snapshot.readyPlayerIds.length}/${this.snapshot.connectedPlayers}`
       );
+      this.help.setText(ready ? "R = UNREADY" : "R = READY");
       return;
     }
 
-    const self = this.connection.playerId
-      ? playerById(this.state, this.connection.playerId)
-      : undefined;
+    if (this.snapshot.status === "finished") {
+      const outcome = this.state?.winnerId
+        ? this.state.winnerId === selfId ? "ROUND WON" : "ROUND LOST"
+        : "ROUND DRAW";
+      const voted = selfId ? this.snapshot.rematchPlayerIds.includes(selfId) : false;
+      this.status.setText(outcome);
+      this.help.setText(voted ? "REMATCH VOTE SENT" : "M = VOTE REMATCH");
+      return;
+    }
+
+    const self = selfId && this.state ? playerById(this.state, selfId) : undefined;
+    if (!self) {
+      this.status.setText(this.connectionStatus);
+      this.help.setText("");
+      return;
+    }
+
+    if (!self.alive) {
+      this.status.setText("SPECTATING // SIGNAL LOST");
+      this.help.setText("");
+      return;
+    }
 
     this.status.setText(
-      self
-        ? `ONLINE // RANGE ${self.blastRange}  CORES ${self.coreCapacity}  SPEED ${self.speedTier}`
-        : this.connectionStatus
+      `ONLINE // RANGE ${self.blastRange}  CORES ${self.coreCapacity}  SPEED ${self.speedTier}`
     );
+    this.help.setText("WASD/ARROWS MOVE // SPACE CORE");
   }
 }
