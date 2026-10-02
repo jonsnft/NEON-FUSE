@@ -1,5 +1,6 @@
 import type { GameState } from "./types";
 import { indexOf, tileAt } from "./types";
+import { applySuddenDeath, enforceRoundDeadline } from "./suddenDeath";
 
 const BLAST_TTL_MS = 260;
 
@@ -40,7 +41,9 @@ export function tickSimulation(state: GameState, deltaMs: number): void {
   }
 
   state.cores = state.cores.filter((core) => !exploded.has(core.id));
+  applySuddenDeath(state);
   resolveRound(state);
+  enforceRoundDeadline(state);
 }
 
 export function resolveRound(state: GameState): void {
