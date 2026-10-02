@@ -42,7 +42,8 @@ export class LobbyScene extends Scene {
       four: Input.Keyboard.KeyCodes.FOUR,
       five: Input.Keyboard.KeyCodes.FIVE,
       six: Input.Keyboard.KeyCodes.SIX,
-      seven: Input.Keyboard.KeyCodes.SEVEN
+      seven: Input.Keyboard.KeyCodes.SEVEN,
+      store: Input.Keyboard.KeyCodes.S
     }) as Record<string, Input.Keyboard.Key>;
 
     void this.lobby.connect((rooms) => {
@@ -51,7 +52,7 @@ export class LobbyScene extends Scene {
         .slice(0, 7);
       this.renderRooms();
     }).then(() => {
-      this.status.setText("Q QUICK MATCH // 1-7 JOIN LISTED ROOM");
+      this.status.setText("Q QUICK MATCH // 1-7 JOIN ROOM // S ITEM CATALOG");
     }).catch((error: unknown) => {
       this.status.setText(error instanceof Error ? error.message : "LOBBY CONNECTION FAILED");
     });
@@ -60,6 +61,11 @@ export class LobbyScene extends Scene {
   }
 
   update(): void {
+    if (Input.Keyboard.JustDown(this.keys.store)) {
+      this.scene.start("store-preview");
+      return;
+    }
+
     if (Input.Keyboard.JustDown(this.keys.quick)) {
       this.startMatch();
       return;
