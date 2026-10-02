@@ -69,8 +69,13 @@ export class OnlineGameScene extends Scene {
       d: Input.Keyboard.KeyCodes.D,
       core: Input.Keyboard.KeyCodes.SPACE,
       ready: Input.Keyboard.KeyCodes.R,
-      rematch: Input.Keyboard.KeyCodes.M
+      rematch: Input.Keyboard.KeyCodes.M,
+      lobby: Input.Keyboard.KeyCodes.ESC
     }) as Record<string, Input.Keyboard.Key>;
+
+    this.events.once("shutdown", () => {
+      void this.connection.disconnect();
+    });
 
     void this.connection.connect(
       (snapshot) => this.acceptSnapshot(snapshot),
@@ -87,6 +92,11 @@ export class OnlineGameScene extends Scene {
   }
 
   update(time: number): void {
+    if (Input.Keyboard.JustDown(this.keys.lobby)) {
+      this.scene.start("lobby");
+      return;
+    }
+
     if (this.snapshot?.status === "waiting") {
       if (Input.Keyboard.JustDown(this.keys.ready)) {
         const selfId = this.connection.playerId;
@@ -203,7 +213,7 @@ export class OnlineGameScene extends Scene {
       this.status.setText(
         `WAITING ${this.snapshot.connectedPlayers}/${this.snapshot.maxPlayers} // READY ${this.snapshot.readyPlayerIds.length}/${this.snapshot.connectedPlayers} // MAP ${map}`
       );
-      this.help.setText(ready ? "R = UNREADY" : "R = READY");
+      this.help.setText(ready ? "R = UNREADY // ESC = LOBBY" : "R = READY // ESC = LOBBY");
       return;
     }
 
@@ -213,7 +223,7 @@ export class OnlineGameScene extends Scene {
         : "ROUND DRAW";
       const voted = selfId ? this.snapshot.rematchPlayerIds.includes(selfId) : false;
       this.status.setText(`${outcome} // MAP ${this.state?.mapId ?? this.mapId}`);
-      this.help.setText(voted ? "REMATCH VOTE SENT" : "M = VOTE REMATCH");
+      this.help.setText(voted ? "REMATCH VOTE SENT // ESC = LOBBY" : "M = VOTE REMATCH // ESC = LOBBY");
       return;
     }
 
@@ -237,6 +247,6 @@ export class OnlineGameScene extends Scene {
     this.status.setText(
       `ONLINE // ${clock}${danger} // MAP ${this.state.mapId} // RANGE ${self.blastRange} CORES ${self.coreCapacity} SPEED ${self.speedTier}`
     );
-    this.help.setText("WASD/ARROWS MOVE // SPACE CORE");
+    this.help.setText("WASD/ARROWS MOVE // SPACE CORE // ESC = LOBBY");
   }
 }
