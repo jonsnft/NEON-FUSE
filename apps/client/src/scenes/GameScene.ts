@@ -8,6 +8,7 @@ import {
   type Direction,
   type GameState
 } from "@neon-fuse/shared";
+import { CyberpunkAssetLayer } from "../render/CyberpunkAssetLayer";
 import { NeonWorldRenderer } from "../render/NeonWorldRenderer";
 
 const LOCAL_PLAYER = "local-player";
@@ -15,6 +16,7 @@ const LOCAL_PLAYER = "local-player";
 export class GameScene extends Scene {
   private state!: GameState;
   private worldRenderer!: NeonWorldRenderer;
+  private assetLayer!: CyberpunkAssetLayer;
   private status!: GameObjects.Text;
   private keys!: Record<string, Input.Keyboard.Key>;
   private nextMoveAt = 0;
@@ -26,6 +28,7 @@ export class GameScene extends Scene {
   create(): void {
     this.state = createArena([LOCAL_PLAYER]);
     this.worldRenderer = new NeonWorldRenderer(this);
+    this.assetLayer = new CyberpunkAssetLayer(this);
     this.status = this.add.text(10, 8, "", {
       fontFamily: "monospace",
       fontSize: "14px",
@@ -48,16 +51,22 @@ export class GameScene extends Scene {
     }) as Record<string, Input.Keyboard.Key>;
 
     this.worldRenderer.setState(this.state, LOCAL_PLAYER);
+    this.assetLayer.setState(this.state, LOCAL_PLAYER);
     this.worldRenderer.render(0, 0);
+    this.assetLayer.render(0, 0);
     this.renderStatus();
 
-    this.events.once("shutdown", () => this.worldRenderer.destroy());
+    this.events.once("shutdown", () => {
+      this.assetLayer.destroy();
+      this.worldRenderer.destroy();
+    });
   }
 
   update(time: number, delta: number): void {
     if (Input.Keyboard.JustDown(this.keys.reset)) {
       this.state = createArena([LOCAL_PLAYER]);
       this.worldRenderer.clearState();
+      this.assetLayer.clearState();
     }
 
     if (Input.Keyboard.JustDown(this.keys.core)) {
@@ -74,7 +83,9 @@ export class GameScene extends Scene {
 
     tickSimulation(this.state, Math.min(delta, 100));
     this.worldRenderer.setState(this.state, LOCAL_PLAYER);
+    this.assetLayer.setState(this.state, LOCAL_PLAYER);
     this.worldRenderer.render(time, delta);
+    this.assetLayer.render(time, delta);
     this.renderStatus();
   }
 
