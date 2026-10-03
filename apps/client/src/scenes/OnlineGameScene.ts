@@ -1,4 +1,4 @@
-import { GameObjects, Input, Scene } from "phaser";
+import { Input, Scene } from "phaser";
 import {
   ITEM_PRESET_IDS,
   MODIFIER_PRESET_IDS,
@@ -20,6 +20,9 @@ import { SpriteAtlasLayer } from "../render/SpriteAtlasLayer";
 import { preloadProductionAtlas } from "../render/spriteAtlas";
 import { Sfx } from "../audio/Sfx";
 import { LobbyChat } from "../ui/LobbyChat";
+import { MatchHud } from "../ui/MatchHud";
+
+const TILE = 48;
 
 interface OnlineSceneData {
   roomId?: string;
@@ -31,8 +34,7 @@ export class OnlineGameScene extends Scene {
   private connection = new MatchConnection();
   private worldRenderer!: NeonWorldRenderer;
   private assetLayer!: CyberpunkAssetLayer | SpriteAtlasLayer;
-  private status!: GameObjects.Text;
-  private help!: GameObjects.Text;
+  private hud!: MatchHud;
   private chat!: LobbyChat;
   private keys!: Record<string, Input.Keyboard.Key>;
   private nextMoveAt = 0;
@@ -60,17 +62,8 @@ export class OnlineGameScene extends Scene {
     this.assetLayer = SpriteAtlasLayer.isAvailable(this)
       ? new SpriteAtlasLayer(this)
       : new CyberpunkAssetLayer(this);
-    this.status = this.add.text(10, 8, "CONNECTING", {
-      fontFamily: "monospace",
-      fontSize: "14px",
-      color: "#53f3ff"
-    }).setDepth(10);
-    this.help = this.add.text(10, 32, "", {
-      fontFamily: "monospace",
-      fontSize: "13px",
-      color: "#e9ff70",
-      wordWrap: { width: 1000 }
-    }).setDepth(10);
+    this.hud = new MatchHud(this);
+    this.hud.show("NETWORK", "CONNECTING", "Establishing match session...", "ESC  LOBBY");
 
     if (!this.input.keyboard) throw new Error("Keyboard input unavailable");
     this.keys = this.input.keyboard.addKeys({
@@ -101,6 +94,7 @@ export class OnlineGameScene extends Scene {
 
     this.events.once("shutdown", () => {
       this.chat.destroy();
+      this.hud.destroy();
       this.assetLayer.destroy();
       this.worldRenderer.destroy();
       void this.connection.disconnect();
@@ -239,6 +233,7 @@ export class OnlineGameScene extends Scene {
 
     if (snapshot.status === "waiting") {
       this.state = null;
+      this.hud.setArenaWidth(0);
       this.worldRenderer.clearState();
       this.assetLayer.clearState();
       this.chat.setEnabled(true);
@@ -249,6 +244,7 @@ export class OnlineGameScene extends Scene {
     this.chat.setEnabled(false);
     this.playSnapshotCues(snapshot.game, snapshot.status);
     this.state = snapshot.game;
+    this.hud.setArenaWidth(this.state.width * TILE);
     this.worldRenderer.setState(
       this.state,
       this.connection.playerId ?? undefined,
@@ -300,8 +296,7 @@ export class OnlineGameScene extends Scene {
     const selfId = this.connection.playerId;
 
     if (!this.snapshot) {
-      this.status.setText(this.connectionStatus);
-      this.help.setText("");
+      this.hud.show("NETWORK", this.connectionStatus, "Waiting for lobby state...", "ESC  LOBBY");
       return;
     }
 
@@ -313,22 +308,20 @@ export class OnlineGameScene extends Scene {
         this.snapshot.readyPlayerIds.length === this.snapshot.connectedPlayers;
       const config = this.snapshot.config;
       const mapName = OFFICIAL_MAPS[config.mapId].displayName.toUpperCase();
+      const primary = `${this.snapshot.connectedPlayers}/${config.maxPlayers} PLAYERS   ${this.snapshot.readyPlayerIds.length}/${this.snapshot.connectedPlayers} READY`;
+      const secondary = `MAP ${mapName}   ITEMS ${config.itemPresetId.toUpperCase()}   MOD ${config.modifierPresetId.toUpperCase()}   PACE ${config.pacePresetId.toUpperCase()}${isCreator ? "   CREATOR" : ""}`;
 
-      this.status.setText(
-        `WAITING ${this.snapshot.connectedPlayers}/${config.maxPlayers} // READY ${this.snapshot.readyPlayerIds.length}/${this.snapshot.connectedPlayers} // MAP ${mapName} // ITEMS ${config.itemPresetId.toUpperCase()} // MOD ${config.modifierPresetId.toUpperCase()} // PACE ${config.pacePresetId.toUpperCase()}${isCreator ? " // CREATOR" : ""}`
-      );
-
+      let controls: string;
       if (isCreator) {
-        const start = allReady ? "ENTER START // " : "";
-        const readyHelp = ready ? "R UNREADY" : "R READY";
-        this.help.setText(
-          `${start}M MAP // P PLAYERS // I ITEMS // G MODIFIER // F PACE // ${readyHelp} // T CHAT // ESC LOBBY`
-        );
+        const start = allReady ? "ENTER START   " : "";
+        controls = `${start}M MAP   P PLAYERS   I ITEMS   G MOD   F PACE   ${ready ? "R UNREADY" : "R READY"}   T CHAT   ESC LOBBY`;
       } else if (allReady) {
-        this.help.setText("ALL READY // WAITING FOR CREATOR // T CHAT // ESC LOBBY");
+        controls = "ALL READY - WAITING FOR CREATOR   T CHAT   ESC LOBBY";
       } else {
-        this.help.setText(ready ? "R UNREADY // T CHAT // ESC LOBBY" : "R READY // T CHAT // ESC LOBBY");
+        controls = `${ready ? "R UNREADY" : "R READY"}   T CHAT   ESC LOBBY`;
       }
+
+      this.hud.show("NETWORK LOBBY", primary, secondary, controls, allReady ? "success" : "normal");
       return;
     }
 
@@ -337,33 +330,51 @@ export class OnlineGameScene extends Scene {
         ? this.state.winnerId === selfId ? "ROUND WON" : "ROUND LOST"
         : "ROUND DRAW";
       const voted = selfId ? this.snapshot.rematchPlayerIds.includes(selfId) : false;
-      this.status.setText(
-        `${outcome} // MAP ${this.state?.mapId ?? "-"} // ITEMS ${this.state?.rules.itemPresetId ?? "-"} // MOD ${this.state?.rules.modifierPresetId ?? "-"} // PACE ${this.state?.rules.pacePresetId ?? "-"}`
+      const state = this.state;
+      const alive = state?.players.filter((player) => player.alive).length ?? 0;
+      const total = state?.players.length ?? 0;
+      const secondary = `MAP ${state?.mapId ?? "-"}\nSURVIVORS ${alive}/${total}\nITEMS ${state?.rules.itemPresetId ?? "-"}   MOD ${state?.rules.modifierPresetId ?? "-"}   PACE ${state?.rules.pacePresetId ?? "-"}`;
+      this.hud.show(
+        "ROUND COMPLETE",
+        outcome,
+        secondary,
+        voted ? "REMATCH VOTE SENT   ESC LOBBY" : "M VOTE REMATCH   ESC LOBBY",
+        outcome === "ROUND WON" ? "success" : outcome === "ROUND LOST" ? "danger" : "normal"
       );
-      this.help.setText(voted ? "REMATCH VOTE SENT // ESC LOBBY" : "M VOTE REMATCH // ESC LOBBY");
       return;
     }
 
     const self = selfId && this.state ? playerById(this.state, selfId) : undefined;
     if (!self || !this.state) {
-      this.status.setText(this.connectionStatus);
-      this.help.setText("");
+      this.hud.show("NETWORK", this.connectionStatus, "Waiting for player state...", "ESC  LOBBY");
       return;
     }
 
     const seconds = Math.ceil(remainingRoundMs(this.state) / 1000);
     const clock = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
-    const danger = isSuddenDeath(this.state) ? " // SUDDEN DEATH" : "";
+    const suddenDeath = isSuddenDeath(this.state);
+    const alive = this.state.players.filter((player) => player.alive).length;
+    const total = this.state.players.length;
 
     if (!self.alive) {
-      this.status.setText(`SPECTATING // ${clock}${danger} // MAP ${this.state.mapId}`);
-      this.help.setText("");
+      this.hud.show(
+        "SIGNAL LOST",
+        suddenDeath ? `${clock}  SUDDEN DEATH` : clock,
+        `SPECTATING\nALIVE ${alive}/${total}\nMAP ${this.state.mapId}`,
+        "ESC  LOBBY",
+        "danger"
+      );
       return;
     }
 
-    this.status.setText(
-      `ONLINE // ${clock}${danger} // MAP ${this.state.mapId} // PACE ${this.state.rules.pacePresetId.toUpperCase()} // RANGE ${self.blastRange} CORES ${self.coreCapacity} SPEED ${self.speedTier}`
+    const primary = suddenDeath ? `${clock}  SUDDEN DEATH` : clock;
+    const secondary = `YOU LIVE   ALIVE ${alive}/${total}\nMAP ${this.state.mapId}   PACE ${this.state.rules.pacePresetId.toUpperCase()}\nRANGE ${self.blastRange}   CORES ${self.coreCapacity}   SPEED ${self.speedTier}`;
+    this.hud.show(
+      "ONLINE MATCH",
+      primary,
+      secondary,
+      "WASD / ARROWS  MOVE\nSPACE  PLACE CORE\nESC  LOBBY",
+      suddenDeath ? "danger" : "normal"
     );
-    this.help.setText("WASD/ARROWS MOVE // SPACE CORE // ESC LOBBY");
   }
 }
