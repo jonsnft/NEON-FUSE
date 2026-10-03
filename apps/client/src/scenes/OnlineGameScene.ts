@@ -14,7 +14,7 @@ import {
   type MatchSnapshot
 } from "@neon-fuse/shared";
 import { MatchConnection } from "../net/MatchConnection";
-import { renderWorld } from "../render/renderWorld";
+import { NeonWorldRenderer } from "../render/NeonWorldRenderer";
 import { Sfx } from "../audio/Sfx";
 import { LobbyChat } from "../ui/LobbyChat";
 
@@ -26,7 +26,7 @@ export class OnlineGameScene extends Scene {
   private state: GameState | null = null;
   private snapshot: MatchSnapshot | null = null;
   private connection = new MatchConnection();
-  private graphics!: GameObjects.Graphics;
+  private renderer!: NeonWorldRenderer;
   private status!: GameObjects.Text;
   private help!: GameObjects.Text;
   private chat!: LobbyChat;
@@ -48,11 +48,11 @@ export class OnlineGameScene extends Scene {
   }
 
   create(): void {
-    this.graphics = this.add.graphics();
+    this.renderer = new NeonWorldRenderer(this);
     this.status = this.add.text(10, 8, "CONNECTING", {
       fontFamily: "monospace",
       fontSize: "14px",
-      color: "#dff"
+      color: "#53f3ff"
     }).setDepth(10);
     this.help = this.add.text(10, 32, "", {
       fontFamily: "monospace",
@@ -90,6 +90,7 @@ export class OnlineGameScene extends Scene {
 
     this.events.once("shutdown", () => {
       this.chat.destroy();
+      this.renderer.destroy();
       void this.connection.disconnect();
     });
 
@@ -107,7 +108,8 @@ export class OnlineGameScene extends Scene {
     });
   }
 
-  update(time: number): void {
+  update(time: number, delta: number): void {
+    this.renderer.render(time, delta);
     if (this.chat.isTyping) return;
 
     if (Input.Keyboard.JustDown(this.keys.lobby)) {
@@ -224,7 +226,7 @@ export class OnlineGameScene extends Scene {
 
     if (snapshot.status === "waiting") {
       this.state = null;
-      this.graphics.clear();
+      this.renderer.clearState();
       this.chat.setEnabled(true);
       this.renderStatus();
       return;
@@ -233,7 +235,11 @@ export class OnlineGameScene extends Scene {
     this.chat.setEnabled(false);
     this.playSnapshotCues(snapshot.game, snapshot.status);
     this.state = snapshot.game;
-    renderWorld(this.graphics, this.state, this.connection.playerId ?? undefined, snapshot.presentations);
+    this.renderer.setState(
+      this.state,
+      this.connection.playerId ?? undefined,
+      snapshot.presentations
+    );
     this.previousGame = structuredClone(snapshot.game);
     this.renderStatus();
   }
