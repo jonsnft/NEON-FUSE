@@ -37,6 +37,7 @@ export class MatchRoom extends Room {
   private readonly presentations = new Map<string, PlayerPresentation>();
   private readonly subjectIds = new Map<string, string>();
   private mapId: OfficialMapId = "grid-zero";
+  private creatorPlayerId: string | null = null;
 
   onCreate(options: Record<string, unknown> = {}): void {
     this.maxClients = clampMaxPlayers(options.maxPlayers);
@@ -49,8 +50,15 @@ export class MatchRoom extends Room {
         if (this.game) return;
         if (payload.ready) this.readyIds.add(client.sessionId);
         else this.readyIds.delete(client.sessionId);
-        this.tryStartRound();
         this.broadcastWaiting();
+        void this.refreshMetadata();
+        return;
+      }
+
+      if (payload.type === "match.start") {
+        if (this.game) return;
+        this.tryStartRound(client.sessionId);
+        if (!this.game) this.broadcastWaiting();
         void this.refreshMetadata();
         return;
       }
@@ -93,6 +101,8 @@ export class MatchRoom extends Room {
     this.lastSeq.set(client.sessionId, -1);
     this.readyIds.delete(client.sessionId);
     this.rematchIds.delete(client.sessionId);
+    if (!this.creatorPlayerId && !this.game) this.creatorPlayerId = client.sessionId;
+
     const subject = await this.platform.identity.resolveSubject(client.sessionId);
     this.subjectIds.set(client.sessionId, subject.subjectId);
     this.presentations.set(
@@ -128,6 +138,14 @@ export class MatchRoom extends Room {
     if (subjectId) void this.platform.telemetry.track({ type: "player.left", subjectId });
     this.subjectIds.delete(client.sessionId);
 
+    const remainingIds = idsExcluding(
+      this.clients.map((connected) => connected.sessionId),
+      client.sessionId
+    );
+    if (client.sessionId === this.creatorPlayerId) {
+      this.creatorPlayerId = remainingIds[0] ?? null;
+    }
+
     if (this.game?.phase === "playing") {
       const player = playerById(this.game, client.sessionId);
       if (player?.alive) {
@@ -136,10 +154,6 @@ export class MatchRoom extends Room {
       }
       this.broadcastSnapshot();
     } else if (this.game?.phase === "finished") {
-      const remainingIds = idsExcluding(
-        this.clients.map((connected) => connected.sessionId),
-        client.sessionId
-      );
       if (remainingIds.length < MIN_PLAYERS) {
         this.resetToWaiting();
       } else {
@@ -147,18 +161,14 @@ export class MatchRoom extends Room {
         this.broadcastSnapshot();
       }
     } else {
-      const remainingIds = idsExcluding(
-        this.clients.map((connected) => connected.sessionId),
-        client.sessionId
-      );
       this.broadcastWaiting(remainingIds.length);
     }
 
     void this.refreshMetadata();
   }
 
-  private tryStartRound(): void {
-    if (this.game || this.clients.length < MIN_PLAYERS) return;
+  private tryStartRound(requesterId: string): void {
+    if (this.game || requesterId !== this.creatorPlayerId || this.clients.length < MIN_PLAYERS) return;
     const ids = this.clients.map((client) => client.sessionId);
     if (!everyConnectedHasVoted(ids, this.readyIds)) return;
 
@@ -188,6 +198,7 @@ export class MatchRoom extends Room {
     this.game = null;
     this.readyIds.clear();
     this.rematchIds.clear();
+    if (!this.creatorPlayerId) this.creatorPlayerId = this.clients[0]?.sessionId ?? null;
     void this.unlock();
     this.broadcastWaiting();
   }
@@ -202,6 +213,7 @@ export class MatchRoom extends Room {
       requiredPlayers: MIN_PLAYERS,
       maxPlayers: this.maxClients,
       readyPlayerIds: [...this.readyIds],
+      creatorPlayerId: this.creatorPlayerId,
       mapId: this.mapId
     };
     this.broadcast("snapshot", snapshot);
@@ -239,6 +251,7 @@ export class MatchRoom extends Room {
         requiredPlayers: MIN_PLAYERS,
         maxPlayers: this.maxClients,
         readyPlayerIds: [...this.readyIds],
+        creatorPlayerId: this.creatorPlayerId,
         mapId: this.mapId
       };
       client.send("snapshot", snapshot);
