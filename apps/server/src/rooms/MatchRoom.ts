@@ -1,12 +1,16 @@
 import { Client, Room } from "colyseus";
 import {
+  CHAT_MIN_INTERVAL_MS,
   PROTOCOL_VERSION,
   createOfficialArena,
+  isChatSend,
+  normalizeChatText,
   normalizeOfficialMapId,
   isClientIntent,
   playerById,
   resolveRound,
   tickSimulation,
+  type ChatMessage,
   type GameState,
   type MatchSnapshot,
   type PlayerPresentation,
@@ -33,6 +37,7 @@ export class MatchRoom extends Room {
   private readonly lastSeq = new Map<string, number>();
   private readonly readyIds = new Set<string>();
   private readonly rematchIds = new Set<string>();
+  private readonly lastChatAt = new Map<string, number>();
   private readonly platform = createPlatformServices();
   private readonly presentations = new Map<string, PlayerPresentation>();
   private readonly subjectIds = new Map<string, string>();
@@ -42,6 +47,27 @@ export class MatchRoom extends Room {
   onCreate(options: Record<string, unknown> = {}): void {
     this.maxClients = clampMaxPlayers(options.maxPlayers);
     this.mapId = normalizeOfficialMapId(options.mapId);
+
+    this.onMessage("chat.send", (client, payload: unknown) => {
+      if (this.game || !isChatSend(payload)) return;
+
+      const now = Date.now();
+      const lastSentAt = this.lastChatAt.get(client.sessionId) ?? Number.NEGATIVE_INFINITY;
+      if (now - lastSentAt < CHAT_MIN_INTERVAL_MS) return;
+
+      const text = normalizeChatText(payload.text);
+      if (!text) return;
+
+      this.lastChatAt.set(client.sessionId, now);
+      const message: ChatMessage = {
+        type: "chat.message",
+        version: PROTOCOL_VERSION,
+        senderId: client.sessionId,
+        text,
+        sentAtMs: now
+      };
+      this.broadcast("chat.message", message);
+    });
 
     this.onMessage("intent", (client, payload: unknown) => {
       if (!isClientIntent(payload)) return;
@@ -133,6 +159,7 @@ export class MatchRoom extends Room {
     this.lastSeq.delete(client.sessionId);
     this.readyIds.delete(client.sessionId);
     this.rematchIds.delete(client.sessionId);
+    this.lastChatAt.delete(client.sessionId);
     this.presentations.delete(client.sessionId);
     const subjectId = this.subjectIds.get(client.sessionId);
     if (subjectId) void this.platform.telemetry.track({ type: "player.left", subjectId });
