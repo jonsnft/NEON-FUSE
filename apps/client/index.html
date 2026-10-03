@@ -17,9 +17,27 @@
         <aside id="match-hud" hidden aria-live="polite">
           <div class="match-hud__accent"></div>
           <div class="match-hud__content">
-            <div id="match-hud-eyebrow" class="match-hud__eyebrow">NEON FUSE</div>
-            <div id="match-hud-primary" class="match-hud__primary"></div>
-            <div id="match-hud-secondary" class="match-hud__secondary"></div>
+            <section class="match-hud__hero">
+              <div id="match-hud-eyebrow" class="match-hud__eyebrow">NEON FUSE</div>
+              <div id="match-hud-primary" class="match-hud__primary"></div>
+              <div id="match-hud-secondary" class="match-hud__secondary"></div>
+            </section>
+
+            <section id="match-hud-objective-module" class="match-hud__module" hidden>
+              <div class="match-hud__label">OBJECTIVE</div>
+              <div id="match-hud-objective" class="match-hud__objective"></div>
+            </section>
+
+            <section id="match-hud-items-module" class="match-hud__module" hidden>
+              <div class="match-hud__label">PICKUPS</div>
+              <div id="match-hud-items" class="match-hud__items"></div>
+            </section>
+
+            <section id="match-hud-telemetry-module" class="match-hud__module" hidden>
+              <div class="match-hud__label">RUN DATA</div>
+              <div id="match-hud-telemetry" class="match-hud__telemetry"></div>
+            </section>
+
             <div id="match-hud-controls" class="match-hud__controls"></div>
           </div>
         </aside>
