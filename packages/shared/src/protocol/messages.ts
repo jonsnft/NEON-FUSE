@@ -8,6 +8,7 @@ export type ClientIntent =
   | { type: "player.move"; version: 1; seq: number; direction: Direction }
   | { type: "core.place"; version: 1; seq: number }
   | { type: "match.ready"; version: 1; ready: boolean }
+  | { type: "match.start"; version: 1 }
   | { type: "match.rematch"; version: 1 };
 
 export type MatchSnapshot =
@@ -19,6 +20,7 @@ export type MatchSnapshot =
       requiredPlayers: number;
       maxPlayers: number;
       readyPlayerIds: string[];
+      creatorPlayerId: string | null;
       mapId?: string;
     }
   | {
@@ -57,5 +59,5 @@ export function isClientIntent(value: unknown): value is ClientIntent {
     return typeof candidate.ready === "boolean";
   }
 
-  return candidate.type === "match.rematch";
+  return candidate.type === "match.start" || candidate.type === "match.rematch";
 }
