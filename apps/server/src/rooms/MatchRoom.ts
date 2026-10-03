@@ -1,20 +1,24 @@
 import { Client, Room } from "colyseus";
 import {
   CHAT_MIN_INTERVAL_MS,
+  DEFAULT_LOBBY_CONFIG,
   PROTOCOL_VERSION,
+  applyLobbyConfigPatch,
   createOfficialArena,
   isChatSend,
+  isClientIntent,
+  isLobbyConfigureRequest,
   normalizeChatText,
   normalizeOfficialMapId,
-  isClientIntent,
   playerById,
   resolveRound,
   tickSimulation,
   type ChatMessage,
+  type GameRules,
   type GameState,
+  type LobbyConfig,
   type MatchSnapshot,
-  type PlayerPresentation,
-  type OfficialMapId
+  type PlayerPresentation
 } from "@neon-fuse/shared";
 import { applyClientIntent } from "../intent";
 import {
@@ -30,6 +34,12 @@ const TICK_MS = 50;
 
 const isRoundFinished = (game: GameState): boolean => game.phase === "finished";
 
+const sameConfig = (a: LobbyConfig, b: LobbyConfig): boolean =>
+  a.maxPlayers === b.maxPlayers &&
+  a.mapId === b.mapId &&
+  a.itemPresetId === b.itemPresetId &&
+  a.modifierPresetId === b.modifierPresetId;
+
 export class MatchRoom extends Room {
   maxClients = HARD_MAX_PLAYERS;
 
@@ -41,12 +51,16 @@ export class MatchRoom extends Room {
   private readonly platform = createPlatformServices();
   private readonly presentations = new Map<string, PlayerPresentation>();
   private readonly subjectIds = new Map<string, string>();
-  private mapId: OfficialMapId = "grid-zero";
+  private config: LobbyConfig = { ...DEFAULT_LOBBY_CONFIG };
   private creatorPlayerId: string | null = null;
 
   onCreate(options: Record<string, unknown> = {}): void {
-    this.maxClients = clampMaxPlayers(options.maxPlayers);
-    this.mapId = normalizeOfficialMapId(options.mapId);
+    this.config = {
+      ...DEFAULT_LOBBY_CONFIG,
+      maxPlayers: clampMaxPlayers(options.maxPlayers),
+      mapId: normalizeOfficialMapId(options.mapId)
+    };
+    this.maxClients = this.config.maxPlayers;
 
     this.onMessage("chat.send", (client, payload: unknown) => {
       if (this.game || !isChatSend(payload)) return;
@@ -67,6 +81,21 @@ export class MatchRoom extends Room {
         sentAtMs: now
       };
       this.broadcast("chat.message", message);
+    });
+
+    this.onMessage("lobby.configure", (client, payload: unknown) => {
+      if (this.game || client.sessionId !== this.creatorPlayerId || !isLobbyConfigureRequest(payload)) {
+        return;
+      }
+
+      const next = applyLobbyConfigPatch(this.config, payload.patch, this.clients.length);
+      if (!next || sameConfig(next, this.config)) return;
+
+      this.config = next;
+      this.maxClients = next.maxPlayers;
+      this.readyIds.clear();
+      this.broadcastWaiting();
+      void this.refreshMetadata();
     });
 
     this.onMessage("intent", (client, payload: unknown) => {
@@ -194,12 +223,19 @@ export class MatchRoom extends Room {
     void this.refreshMetadata();
   }
 
+  private gameRules(): GameRules {
+    return {
+      itemPresetId: this.config.itemPresetId,
+      modifierPresetId: this.config.modifierPresetId
+    };
+  }
+
   private tryStartRound(requesterId: string): void {
     if (this.game || requesterId !== this.creatorPlayerId || this.clients.length < MIN_PLAYERS) return;
     const ids = this.clients.map((client) => client.sessionId);
     if (!everyConnectedHasVoted(ids, this.readyIds)) return;
 
-    this.game = createOfficialArena(this.mapId, ids);
+    this.game = createOfficialArena(this.config.mapId, ids, this.gameRules());
     this.rematchIds.clear();
     this.readyIds.clear();
     for (const id of ids) this.lastSeq.set(id, -1);
@@ -213,7 +249,7 @@ export class MatchRoom extends Room {
     const ids = roster ?? this.clients.map((client) => client.sessionId);
     if (!everyConnectedHasVoted(ids, this.rematchIds)) return;
 
-    this.game = createOfficialArena(this.mapId, ids);
+    this.game = createOfficialArena(this.config.mapId, ids, this.gameRules());
     this.rematchIds.clear();
     for (const id of ids) this.lastSeq.set(id, -1);
     void this.lock();
@@ -238,10 +274,9 @@ export class MatchRoom extends Room {
       status: "waiting",
       connectedPlayers,
       requiredPlayers: MIN_PLAYERS,
-      maxPlayers: this.maxClients,
       readyPlayerIds: [...this.readyIds],
       creatorPlayerId: this.creatorPlayerId,
-      mapId: this.mapId
+      config: { ...this.config }
     };
     this.broadcast("snapshot", snapshot);
   }
@@ -276,10 +311,9 @@ export class MatchRoom extends Room {
         status: "waiting",
         connectedPlayers: this.clients.length,
         requiredPlayers: MIN_PLAYERS,
-        maxPlayers: this.maxClients,
         readyPlayerIds: [...this.readyIds],
         creatorPlayerId: this.creatorPlayerId,
-        mapId: this.mapId
+        config: { ...this.config }
       };
       client.send("snapshot", snapshot);
       return;
@@ -312,10 +346,12 @@ export class MatchRoom extends Room {
   private async refreshMetadata(): Promise<void> {
     await this.setMetadata({
       phase: !this.game ? "waiting" : this.game.phase,
-      maxPlayers: this.maxClients,
+      maxPlayers: this.config.maxPlayers,
       connectedPlayers: this.clients.length,
       readyPlayers: this.readyIds.size,
-      mapId: this.mapId
+      mapId: this.config.mapId,
+      itemPresetId: this.config.itemPresetId,
+      modifierPresetId: this.config.modifierPresetId
     });
   }
 }

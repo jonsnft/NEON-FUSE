@@ -13,6 +13,8 @@ export interface LobbyRoomInfo {
     connectedPlayers?: number;
     readyPlayers?: number;
     mapId?: string;
+    itemPresetId?: string;
+    modifierPresetId?: string;
   };
 }
 

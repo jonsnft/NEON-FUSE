@@ -1,13 +1,16 @@
 import { GameObjects, Input, Scene } from "phaser";
 import {
+  ITEM_PRESET_IDS,
+  MODIFIER_PRESET_IDS,
+  OFFICIAL_MAP_IDS,
+  OFFICIAL_MAPS,
   PROTOCOL_VERSION,
   isSuddenDeath,
   playerById,
   remainingRoundMs,
   type Direction,
   type GameState,
-  type MatchSnapshot,
-  type OfficialMapId
+  type MatchSnapshot
 } from "@neon-fuse/shared";
 import { MatchConnection } from "../net/MatchConnection";
 import { renderWorld } from "../render/renderWorld";
@@ -16,7 +19,6 @@ import { LobbyChat } from "../ui/LobbyChat";
 
 interface OnlineSceneData {
   roomId?: string;
-  mapId?: OfficialMapId;
 }
 
 export class OnlineGameScene extends Scene {
@@ -32,7 +34,6 @@ export class OnlineGameScene extends Scene {
   private seq = 0;
   private connectionStatus = "CONNECTING";
   private roomId?: string;
-  private mapId: OfficialMapId = "grid-zero";
   private readonly sfx = new Sfx();
   private previousGame: GameState | null = null;
   private suddenDeathAnnounced = false;
@@ -43,7 +44,6 @@ export class OnlineGameScene extends Scene {
 
   init(data: OnlineSceneData): void {
     this.roomId = data.roomId;
-    this.mapId = data.mapId ?? "grid-zero";
   }
 
   create(): void {
@@ -56,7 +56,8 @@ export class OnlineGameScene extends Scene {
     this.help = this.add.text(10, 32, "", {
       fontFamily: "monospace",
       fontSize: "13px",
-      color: "#e9ff70"
+      color: "#e9ff70",
+      wordWrap: { width: 1000 }
     }).setDepth(10);
 
     if (!this.input.keyboard) throw new Error("Keyboard input unavailable");
@@ -72,7 +73,10 @@ export class OnlineGameScene extends Scene {
       core: Input.Keyboard.KeyCodes.SPACE,
       ready: Input.Keyboard.KeyCodes.R,
       start: Input.Keyboard.KeyCodes.ENTER,
-      rematch: Input.Keyboard.KeyCodes.M,
+      mapOrRematch: Input.Keyboard.KeyCodes.M,
+      players: Input.Keyboard.KeyCodes.P,
+      items: Input.Keyboard.KeyCodes.I,
+      modifier: Input.Keyboard.KeyCodes.G,
       lobby: Input.Keyboard.KeyCodes.ESC
     }) as Record<string, Input.Keyboard.Key>;
 
@@ -94,8 +98,7 @@ export class OnlineGameScene extends Scene {
         this.renderStatus();
       },
       (message) => this.chat.receive(message),
-      this.roomId,
-      this.mapId
+      this.roomId
     ).catch((error: unknown) => {
       this.connectionStatus = error instanceof Error ? error.message : "CONNECTION FAILED";
       this.renderStatus();
@@ -111,8 +114,12 @@ export class OnlineGameScene extends Scene {
     }
 
     if (this.snapshot?.status === "waiting") {
+      const selfId = this.connection.playerId;
+      const isCreator = Boolean(selfId && selfId === this.snapshot.creatorPlayerId);
+
+      if (isCreator) this.handleCreatorConfig();
+
       if (Input.Keyboard.JustDown(this.keys.ready)) {
-        const selfId = this.connection.playerId;
         const ready = selfId ? !this.snapshot.readyPlayerIds.includes(selfId) : true;
         this.connection.send({
           type: "match.ready",
@@ -121,11 +128,9 @@ export class OnlineGameScene extends Scene {
         });
       }
 
-      const selfId = this.connection.playerId;
       const allReady =
         this.snapshot.connectedPlayers >= this.snapshot.requiredPlayers &&
         this.snapshot.readyPlayerIds.length === this.snapshot.connectedPlayers;
-      const isCreator = Boolean(selfId && selfId === this.snapshot.creatorPlayerId);
       if (isCreator && allReady && Input.Keyboard.JustDown(this.keys.start)) {
         this.connection.send({
           type: "match.start",
@@ -136,7 +141,7 @@ export class OnlineGameScene extends Scene {
     }
 
     if (this.snapshot?.status === "finished") {
-      if (Input.Keyboard.JustDown(this.keys.rematch)) {
+      if (Input.Keyboard.JustDown(this.keys.mapOrRematch)) {
         this.connection.send({
           type: "match.rematch",
           version: PROTOCOL_VERSION
@@ -170,6 +175,38 @@ export class OnlineGameScene extends Scene {
         direction
       });
       this.nextMoveAt = time + moveDelay;
+    }
+  }
+
+  private handleCreatorConfig(): void {
+    if (this.snapshot?.status !== "waiting") return;
+    const config = this.snapshot.config;
+
+    if (Input.Keyboard.JustDown(this.keys.mapOrRematch)) {
+      const index = OFFICIAL_MAP_IDS.indexOf(config.mapId);
+      this.connection.configureLobby({
+        mapId: OFFICIAL_MAP_IDS[(index + 1) % OFFICIAL_MAP_IDS.length]
+      });
+    }
+
+    if (Input.Keyboard.JustDown(this.keys.players)) {
+      const minimum = Math.max(this.snapshot.connectedPlayers, this.snapshot.requiredPlayers);
+      const next = config.maxPlayers >= 8 ? minimum : Math.max(minimum, config.maxPlayers + 1);
+      this.connection.configureLobby({ maxPlayers: next });
+    }
+
+    if (Input.Keyboard.JustDown(this.keys.items)) {
+      const index = ITEM_PRESET_IDS.indexOf(config.itemPresetId);
+      this.connection.configureLobby({
+        itemPresetId: ITEM_PRESET_IDS[(index + 1) % ITEM_PRESET_IDS.length]
+      });
+    }
+
+    if (Input.Keyboard.JustDown(this.keys.modifier)) {
+      const index = MODIFIER_PRESET_IDS.indexOf(config.modifierPresetId);
+      this.connection.configureLobby({
+        modifierPresetId: MODIFIER_PRESET_IDS[(index + 1) % MODIFIER_PRESET_IDS.length]
+      });
     }
   }
 
@@ -236,24 +273,27 @@ export class OnlineGameScene extends Scene {
 
     if (this.snapshot.status === "waiting") {
       const ready = selfId ? this.snapshot.readyPlayerIds.includes(selfId) : false;
-      const map = this.snapshot.mapId ?? this.mapId;
       const isCreator = Boolean(selfId && selfId === this.snapshot.creatorPlayerId);
       const allReady =
         this.snapshot.connectedPlayers >= this.snapshot.requiredPlayers &&
         this.snapshot.readyPlayerIds.length === this.snapshot.connectedPlayers;
+      const config = this.snapshot.config;
+      const mapName = OFFICIAL_MAPS[config.mapId].displayName.toUpperCase();
 
       this.status.setText(
-        `WAITING ${this.snapshot.connectedPlayers}/${this.snapshot.maxPlayers} // READY ${this.snapshot.readyPlayerIds.length}/${this.snapshot.connectedPlayers} // MAP ${map}${isCreator ? " // CREATOR" : ""}`
+        `WAITING ${this.snapshot.connectedPlayers}/${config.maxPlayers} // READY ${this.snapshot.readyPlayerIds.length}/${this.snapshot.connectedPlayers} // MAP ${mapName} // ITEMS ${config.itemPresetId.toUpperCase()} // MOD ${config.modifierPresetId.toUpperCase()}${isCreator ? " // CREATOR" : ""}`
       );
 
-      if (isCreator && allReady) {
-        this.help.setText("ENTER = START // R = UNREADY // T = CHAT // ESC = LOBBY");
-      } else if (isCreator) {
-        this.help.setText(ready ? "WAITING FOR ALL PLAYERS // R = UNREADY // T = CHAT // ESC = LOBBY" : "R = READY // T = CHAT // ESC = LOBBY");
+      if (isCreator) {
+        const start = allReady ? "ENTER START // " : "";
+        const readyHelp = ready ? "R UNREADY" : "R READY";
+        this.help.setText(
+          `${start}M MAP // P PLAYERS // I ITEMS // G MODIFIER // ${readyHelp} // T CHAT // ESC LOBBY`
+        );
       } else if (allReady) {
-        this.help.setText("ALL READY // WAITING FOR CREATOR // T = CHAT // ESC = LOBBY");
+        this.help.setText("ALL READY // WAITING FOR CREATOR // T CHAT // ESC LOBBY");
       } else {
-        this.help.setText(ready ? "R = UNREADY // T = CHAT // ESC = LOBBY" : "R = READY // T = CHAT // ESC = LOBBY");
+        this.help.setText(ready ? "R UNREADY // T CHAT // ESC LOBBY" : "R READY // T CHAT // ESC LOBBY");
       }
       return;
     }
@@ -263,8 +303,10 @@ export class OnlineGameScene extends Scene {
         ? this.state.winnerId === selfId ? "ROUND WON" : "ROUND LOST"
         : "ROUND DRAW";
       const voted = selfId ? this.snapshot.rematchPlayerIds.includes(selfId) : false;
-      this.status.setText(`${outcome} // MAP ${this.state?.mapId ?? this.mapId}`);
-      this.help.setText(voted ? "REMATCH VOTE SENT // ESC = LOBBY" : "M = VOTE REMATCH // ESC = LOBBY");
+      this.status.setText(
+        `${outcome} // MAP ${this.state?.mapId ?? "-"} // ITEMS ${this.state?.rules.itemPresetId ?? "-"} // MOD ${this.state?.rules.modifierPresetId ?? "-"}`
+      );
+      this.help.setText(voted ? "REMATCH VOTE SENT // ESC LOBBY" : "M VOTE REMATCH // ESC LOBBY");
       return;
     }
 
@@ -288,6 +330,6 @@ export class OnlineGameScene extends Scene {
     this.status.setText(
       `ONLINE // ${clock}${danger} // MAP ${this.state.mapId} // RANGE ${self.blastRange} CORES ${self.coreCapacity} SPEED ${self.speedTier}`
     );
-    this.help.setText("WASD/ARROWS MOVE // SPACE CORE // ESC = LOBBY");
+    this.help.setText("WASD/ARROWS MOVE // SPACE CORE // ESC LOBBY");
   }
 }

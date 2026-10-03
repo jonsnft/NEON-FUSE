@@ -1,6 +1,7 @@
 import type { Direction } from "../types/game";
 import type { GameState } from "../sim/types";
 import type { PlayerPresentation } from "../cosmetics/types";
+import type { LobbyConfig } from "../lobby/config";
 
 export const PROTOCOL_VERSION = 1 as const;
 
@@ -18,10 +19,9 @@ export type MatchSnapshot =
       status: "waiting";
       connectedPlayers: number;
       requiredPlayers: number;
-      maxPlayers: number;
       readyPlayerIds: string[];
       creatorPlayerId: string | null;
-      mapId?: string;
+      config: LobbyConfig;
     }
   | {
       type: "match.snapshot";

@@ -1,12 +1,14 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { boot, type ColyseusTestServer } from "@colyseus/testing";
-import { PROTOCOL_VERSION, type GameState } from "@neon-fuse/shared";
+import { PROTOCOL_VERSION, type GameState, type LobbyConfig } from "@neon-fuse/shared";
 import { server } from "../src/app.config";
 
 type InspectableMatchRoom = {
   game: GameState | null;
   creatorPlayerId: string | null;
   readyIds: Set<string>;
+  config: LobbyConfig;
+  maxClients: number;
 };
 
 async function waitUntil(predicate: () => boolean, timeoutMs = 1000): Promise<void> {
@@ -33,18 +35,24 @@ describe("authoritative multiplayer runtime", () => {
     await colyseus.cleanup();
   });
 
-  it("requires creator authorization after every connected player is ready", async () => {
-    const room = await colyseus.createRoom("match", {
-      maxPlayers: 4,
-      mapId: "grid-zero"
-    });
+  it("requires creator authorization and resets ready votes after config changes", async () => {
+    const room = await colyseus.createRoom("match", { maxPlayers: 8 });
     const inspectableRoom = room as unknown as InspectableMatchRoom;
     const creator = await colyseus.connectTo(room);
     const player2 = await colyseus.connectTo(room);
 
-    expect(room.maxClients).toBe(4);
+    expect(room.maxClients).toBe(8);
     expect(inspectableRoom.creatorPlayerId).toBe(creator.sessionId);
+    expect(inspectableRoom.config.mapId).toBe("grid-zero");
     expect(inspectableRoom.game).toBeNull();
+
+    player2.send("lobby.configure", {
+      type: "lobby.configure",
+      version: PROTOCOL_VERSION,
+      patch: { mapId: "data-cross" }
+    });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(inspectableRoom.config.mapId).toBe("grid-zero");
 
     creator.send("intent", {
       type: "match.ready",
@@ -56,11 +64,40 @@ describe("authoritative multiplayer runtime", () => {
       version: PROTOCOL_VERSION,
       ready: true
     });
-
     await waitUntil(() => inspectableRoom.readyIds.size === 2);
-    expect(inspectableRoom.readyIds.has(creator.sessionId)).toBe(true);
-    expect(inspectableRoom.readyIds.has(player2.sessionId)).toBe(true);
-    expect(inspectableRoom.game).toBeNull();
+
+    creator.send("lobby.configure", {
+      type: "lobby.configure",
+      version: PROTOCOL_VERSION,
+      patch: {
+        maxPlayers: 4,
+        mapId: "data-cross",
+        itemPresetId: "no-speed",
+        modifierPresetId: "no-sudden-death"
+      }
+    });
+
+    await waitUntil(() => inspectableRoom.config.mapId === "data-cross");
+    expect(inspectableRoom.maxClients).toBe(4);
+    expect(inspectableRoom.config).toEqual({
+      maxPlayers: 4,
+      mapId: "data-cross",
+      itemPresetId: "no-speed",
+      modifierPresetId: "no-sudden-death"
+    });
+    expect(inspectableRoom.readyIds.size).toBe(0);
+
+    creator.send("intent", {
+      type: "match.ready",
+      version: PROTOCOL_VERSION,
+      ready: true
+    });
+    player2.send("intent", {
+      type: "match.ready",
+      version: PROTOCOL_VERSION,
+      ready: true
+    });
+    await waitUntil(() => inspectableRoom.readyIds.size === 2);
 
     player2.send("intent", {
       type: "match.start",
@@ -75,7 +112,12 @@ describe("authoritative multiplayer runtime", () => {
     });
     await waitUntil(() => inspectableRoom.game?.phase === "playing");
 
-    expect(inspectableRoom.game?.mapId).toBe("grid-zero");
+    expect(inspectableRoom.game?.mapId).toBe("data-cross");
+    expect(inspectableRoom.game?.rules).toEqual({
+      itemPresetId: "no-speed",
+      modifierPresetId: "no-sudden-death"
+    });
+    expect(inspectableRoom.game?.pickups.some((pickup) => pickup.kind === "speed")).toBe(false);
     expect(inspectableRoom.game?.players).toHaveLength(2);
 
     await creator.leave(true);

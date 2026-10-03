@@ -30,7 +30,11 @@ export function suddenDeathOrder(width: number, height: number): Array<{ x: numb
 }
 
 export function applySuddenDeath(state: GameState): void {
-  if (state.phase !== "playing" || state.elapsedMs < state.suddenDeathStartMs) return;
+  if (
+    state.phase !== "playing" ||
+    state.rules.modifierPresetId === "no-sudden-death" ||
+    state.elapsedMs < state.suddenDeathStartMs
+  ) return;
 
   const order = suddenDeathOrder(state.width, state.height);
   const elapsed = state.elapsedMs - state.suddenDeathStartMs;
