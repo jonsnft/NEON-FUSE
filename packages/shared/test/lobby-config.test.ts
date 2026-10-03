@@ -65,6 +65,43 @@ describe("lobby configuration", () => {
     expect(none.pickups).toHaveLength(0);
   });
 
+  it("scales pickup quantity deterministically with player count", () => {
+    const rules = {
+      itemPresetId: "standard" as const,
+      modifierPresetId: "standard" as const,
+      pacePresetId: "standard" as const
+    };
+    const players = (count: number) => Array.from({ length: count }, (_, index) => `p${index + 1}`);
+
+    const two = createOfficialArena("grid-zero", players(2), rules);
+    const four = createOfficialArena("grid-zero", players(4), rules);
+    const eight = createOfficialArena("grid-zero", players(8), rules);
+
+    expect(two.pickups).toHaveLength(3);
+    expect(four.pickups).toHaveLength(4);
+    expect(eight.pickups).toHaveLength(8);
+    expect(eight.pickups.map((pickup) => pickup.kind)).toEqual([
+      "range", "capacity", "speed", "range", "capacity", "speed", "range", "capacity"
+    ]);
+    expect(new Set(eight.pickups.map((pickup) => `${pickup.x},${pickup.y}`)).size).toBe(8);
+  });
+
+  it("scales no-speed pickups without reintroducing speed", () => {
+    const state = createOfficialArena(
+      "grid-zero",
+      Array.from({ length: 8 }, (_, index) => `p${index + 1}`),
+      {
+        itemPresetId: "no-speed",
+        modifierPresetId: "standard",
+        pacePresetId: "standard"
+      }
+    );
+
+    expect(state.pickups).toHaveLength(8);
+    expect(state.pickups.every((pickup) => pickup.kind === "range" || pickup.kind === "capacity")).toBe(true);
+    expect(state.pickups.some((pickup) => pickup.kind === "speed")).toBe(false);
+  });
+
   it("resolves core fuse from the selected pace preset", () => {
     const standard = createOfficialArena("grid-zero", ["p1", "p2"], {
       itemPresetId: "standard",

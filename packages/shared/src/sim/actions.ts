@@ -1,7 +1,7 @@
 import type { Direction } from "../types/game";
 import { coreFuseMsForRules } from "../rules/catalog";
 import type { GameState } from "./types";
-import { playerById, tileAt } from "./types";
+import { metricsForPlayer, playerById, tileAt } from "./types";
 
 const delta: Record<Direction, readonly [number, number]> = {
   up: [0, -1],
@@ -31,6 +31,8 @@ export function movePlayer(state: GameState, playerId: string, direction: Direct
     if (pickup.kind === "range") player.blastRange++;
     if (pickup.kind === "capacity") player.coreCapacity++;
     if (pickup.kind === "speed") player.speedTier++;
+    const metrics = metricsForPlayer(state, playerId);
+    if (metrics) metrics.pickupsCollected[pickup.kind]++;
     state.pickups = state.pickups.filter((p) => p !== pickup);
   }
 
@@ -58,5 +60,7 @@ export function placeCore(
     fuseMs,
     blastRange: player.blastRange
   });
+  const metrics = metricsForPlayer(state, playerId);
+  if (metrics) metrics.coresPlaced++;
   return true;
 }

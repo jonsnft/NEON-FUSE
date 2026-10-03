@@ -91,6 +91,17 @@ export function createArena(
     cores: [],
     blasts: [],
     pickups: activePickupPlan.filter((p) => !safe.has(`${p.x},${p.y}`)).map((p) => ({ ...p })),
+    metrics: {
+      chainDetonations: 0,
+      reachedSuddenDeath: false,
+      players: playerIds.map((playerId, spawnIndex) => ({
+        playerId,
+        spawnIndex,
+        coresPlaced: 0,
+        pickupsCollected: { range: 0, capacity: 0, speed: 0 },
+        eliminatedAtMs: null
+      }))
+    },
     elapsedMs: 0,
     roundDurationMs: GAME.targetMatchSeconds * 1000,
     suddenDeathStartMs: GAME.suddenDeathStartSeconds * 1000,

@@ -36,6 +36,20 @@ export interface SimPickup {
   revealed: boolean;
 }
 
+export interface PlayerMatchMetrics {
+  playerId: string;
+  spawnIndex: number;
+  coresPlaced: number;
+  pickupsCollected: Record<PickupKind, number>;
+  eliminatedAtMs: number | null;
+}
+
+export interface MatchMetrics {
+  chainDetonations: number;
+  reachedSuddenDeath: boolean;
+  players: PlayerMatchMetrics[];
+}
+
 export interface GameState {
   mapId: string;
   rules: GameRules;
@@ -46,6 +60,7 @@ export interface GameState {
   cores: SimCore[];
   blasts: SimBlast[];
   pickups: SimPickup[];
+  metrics: MatchMetrics;
   elapsedMs: number;
   roundDurationMs: number;
   suddenDeathStartMs: number;
@@ -63,6 +78,11 @@ export const tileAt = (state: GameState, x: number, y: number): TileKind =>
 
 export const playerById = (state: GameState, playerId: string): SimPlayer | undefined =>
   state.players.find((player) => player.id === playerId);
+
+export const metricsForPlayer = (
+  state: GameState,
+  playerId: string
+): PlayerMatchMetrics | undefined => state.metrics.players.find((metrics) => metrics.playerId === playerId);
 
 export const remainingRoundMs = (state: GameState): number =>
   Math.max(0, state.roundDurationMs - state.elapsedMs);

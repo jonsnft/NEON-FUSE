@@ -1,5 +1,5 @@
 import type { GameState } from "./types";
-import { indexOf, tileAt } from "./types";
+import { indexOf, metricsForPlayer, tileAt } from "./types";
 import { applySuddenDeath, enforceRoundDeadline } from "./suddenDeath";
 
 const BLAST_TTL_MS = 260;
@@ -11,9 +11,17 @@ export function tickSimulation(state: GameState, deltaMs: number): void {
 
   if (state.phase !== "playing") return;
 
+  if (
+    state.rules.modifierPresetId !== "no-sudden-death" &&
+    state.elapsedMs >= state.suddenDeathStartMs
+  ) {
+    state.metrics.reachedSuddenDeath = true;
+  }
+
   for (const core of state.cores) core.fuseMs -= deltaMs;
 
   const queue = state.cores.filter((core) => core.fuseMs <= 0).map((core) => core.id);
+  const queued = new Set(queue);
   const exploded = new Set<string>();
 
   while (queue.length) {
@@ -32,10 +40,18 @@ export function tickSimulation(state: GameState, deltaMs: number): void {
       const chained = state.cores.find((candidate) =>
         !exploded.has(candidate.id) && candidate.x === x && candidate.y === y
       );
-      if (chained) queue.push(chained.id);
+      if (chained && !queued.has(chained.id)) {
+        queued.add(chained.id);
+        queue.push(chained.id);
+        state.metrics.chainDetonations++;
+      }
 
       for (const player of state.players) {
-        if (player.alive && player.x === x && player.y === y) player.alive = false;
+        if (player.alive && player.x === x && player.y === y) {
+          player.alive = false;
+          const metrics = metricsForPlayer(state, player.id);
+          if (metrics && metrics.eliminatedAtMs === null) metrics.eliminatedAtMs = state.elapsedMs;
+        }
       }
     }
   }
