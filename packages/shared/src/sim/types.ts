@@ -1,3 +1,5 @@
+import type { GameRules } from "../rules/types";
+
 export type TileKind = "floor" | "hard" | "soft";
 export type PickupKind = "range" | "capacity" | "speed";
 export type RoundPhase = "playing" | "finished";
@@ -36,6 +38,7 @@ export interface SimPickup {
 
 export interface GameState {
   mapId: string;
+  rules: GameRules;
   width: number;
   height: number;
   tiles: TileKind[];
@@ -65,4 +68,6 @@ export const remainingRoundMs = (state: GameState): number =>
   Math.max(0, state.roundDurationMs - state.elapsedMs);
 
 export const isSuddenDeath = (state: GameState): boolean =>
-  state.phase === "playing" && state.elapsedMs >= state.suddenDeathStartMs;
+  state.phase === "playing" &&
+  state.rules.modifierPresetId !== "no-sudden-death" &&
+  state.elapsedMs >= state.suddenDeathStartMs;
