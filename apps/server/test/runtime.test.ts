@@ -54,45 +54,48 @@ describe("authoritative multiplayer runtime", () => {
     expect(creator.sessionId).toBeTruthy();
     expect(player2.sessionId).toBeTruthy();
 
-    creator.send("intent", {
-      type: "match.ready",
-      version: PROTOCOL_VERSION,
-      ready: true
-    });
-    player2.send("intent", {
-      type: "match.ready",
-      version: PROTOCOL_VERSION,
-      ready: true
-    });
-
-    const allReadySnapshot = await waitForWaiting(
+    const allReadyPromise = waitForWaiting(
       creator,
       (snapshot) =>
         snapshot.readyPlayerIds.includes(creator.sessionId) &&
         snapshot.readyPlayerIds.includes(player2.sessionId)
     );
 
+    creator.send("intent", {
+      type: "match.ready",
+      version: PROTOCOL_VERSION,
+      ready: true
+    });
+    player2.send("intent", {
+      type: "match.ready",
+      version: PROTOCOL_VERSION,
+      ready: true
+    });
+
+    const allReadySnapshot = await allReadyPromise;
     expect(allReadySnapshot.mapId).toBe("grid-zero");
     expect(allReadySnapshot.creatorPlayerId).toBe(creator.sessionId);
     expect(allReadySnapshot.readyPlayerIds).toHaveLength(2);
 
+    const rejectedStartPromise = waitForWaiting(
+      creator,
+      (snapshot) => snapshot.readyPlayerIds.length === 2
+    );
     player2.send("intent", {
       type: "match.start",
       version: PROTOCOL_VERSION
     });
 
-    const rejectedStartSnapshot = await waitForWaiting(
-      creator,
-      (snapshot) => snapshot.readyPlayerIds.length === 2
-    );
+    const rejectedStartSnapshot = await rejectedStartPromise;
     expect(rejectedStartSnapshot.creatorPlayerId).toBe(creator.sessionId);
 
+    const playingPromise = waitForStatus(creator, "playing");
     creator.send("intent", {
       type: "match.start",
       version: PROTOCOL_VERSION
     });
 
-    const playingSnapshot = await waitForStatus(creator, "playing");
+    const playingSnapshot = await playingPromise;
     expect(playingSnapshot.status).toBe("playing");
     if (playingSnapshot.status === "playing") {
       expect(playingSnapshot.game.mapId).toBe("grid-zero");
