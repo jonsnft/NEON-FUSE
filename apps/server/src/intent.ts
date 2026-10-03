@@ -16,7 +16,11 @@ export function applyClientIntent(
   intent: ClientIntent,
   lastSeq: IntentSequenceState
 ): boolean {
-  if (intent.type === "match.ready" || intent.type === "match.rematch") return false;
+  if (
+    intent.type === "match.ready" ||
+    intent.type === "match.start" ||
+    intent.type === "match.rematch"
+  ) return false;
 
   const previous = lastSeq.get(playerId) ?? -1;
   if (intent.seq <= previous) return false;
