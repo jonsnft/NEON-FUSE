@@ -16,6 +16,8 @@ import {
 import { MatchConnection } from "../net/MatchConnection";
 import { CyberpunkAssetLayer } from "../render/CyberpunkAssetLayer";
 import { NeonWorldRenderer } from "../render/NeonWorldRenderer";
+import { SpriteAtlasLayer } from "../render/SpriteAtlasLayer";
+import { preloadProductionAtlas } from "../render/spriteAtlas";
 import { Sfx } from "../audio/Sfx";
 import { LobbyChat } from "../ui/LobbyChat";
 
@@ -28,7 +30,7 @@ export class OnlineGameScene extends Scene {
   private snapshot: MatchSnapshot | null = null;
   private connection = new MatchConnection();
   private worldRenderer!: NeonWorldRenderer;
-  private assetLayer!: CyberpunkAssetLayer;
+  private assetLayer!: CyberpunkAssetLayer | SpriteAtlasLayer;
   private status!: GameObjects.Text;
   private help!: GameObjects.Text;
   private chat!: LobbyChat;
@@ -49,9 +51,15 @@ export class OnlineGameScene extends Scene {
     this.roomId = data.roomId;
   }
 
+  preload(): void {
+    preloadProductionAtlas(this);
+  }
+
   create(): void {
     this.worldRenderer = new NeonWorldRenderer(this);
-    this.assetLayer = new CyberpunkAssetLayer(this);
+    this.assetLayer = SpriteAtlasLayer.isAvailable(this)
+      ? new SpriteAtlasLayer(this)
+      : new CyberpunkAssetLayer(this);
     this.status = this.add.text(10, 8, "CONNECTING", {
       fontFamily: "monospace",
       fontSize: "14px",
