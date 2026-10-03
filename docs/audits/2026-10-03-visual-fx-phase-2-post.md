@@ -2,7 +2,7 @@
 
 Date: 2026-10-03
 Branch: `feature/visual-fx-phase-2`
-Status: Pending final CI
+Status: Verified
 
 ## Implemented
 - short-lived player movement trails;
@@ -36,4 +36,4 @@ Critical gameplay objects are still rendered as stable silhouettes. Transient ef
 - large debris physics or persistent decals.
 
 ## Verification
-Pending architecture guard, typecheck, tests, production build, Compose validation and both Docker image builds.
+CI run #83 passed architecture guard, typecheck, all tests, production build, Compose validation and both Docker image builds. The final documentation-only head is required to pass the same pipeline before merge.
