@@ -4,8 +4,9 @@ import {
   type ChatMessage,
   type ChatSend,
   type ClientIntent,
-  type MatchSnapshot,
-  type OfficialMapId
+  type LobbyConfigPatch,
+  type LobbyConfigureRequest,
+  type MatchSnapshot
 } from "@neon-fuse/shared";
 import { networkClient } from "./NetworkSession";
 
@@ -29,8 +30,7 @@ export class MatchConnection {
     onSnapshot: SnapshotHandler,
     onStatus: StatusHandler,
     onChat: ChatHandler,
-    roomId?: string,
-    mapId: OfficialMapId = "grid-zero"
+    roomId?: string
   ): Promise<void> {
     this.snapshotHandler = onSnapshot;
     this.statusHandler = onStatus;
@@ -40,7 +40,7 @@ export class MatchConnection {
 
     const room = roomId
       ? await networkClient.joinById(roomId)
-      : await networkClient.joinOrCreate("match", { maxPlayers: 8, mapId });
+      : await networkClient.joinOrCreate("match", { maxPlayers: 8 });
 
     this.bindRoom(room);
     onStatus("CONNECTED");
@@ -48,6 +48,15 @@ export class MatchConnection {
 
   send(intent: ClientIntent): void {
     this.room?.send("intent", intent);
+  }
+
+  configureLobby(patch: LobbyConfigPatch): void {
+    const request: LobbyConfigureRequest = {
+      type: "lobby.configure",
+      version: PROTOCOL_VERSION,
+      patch
+    };
+    this.room?.send("lobby.configure", request);
   }
 
   sendChat(text: string): void {
