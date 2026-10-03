@@ -4,6 +4,7 @@ import {
   MODIFIER_PRESET_IDS,
   OFFICIAL_MAP_IDS,
   OFFICIAL_MAPS,
+  PACE_PRESET_IDS,
   PROTOCOL_VERSION,
   isSuddenDeath,
   playerById,
@@ -77,6 +78,7 @@ export class OnlineGameScene extends Scene {
       players: Input.Keyboard.KeyCodes.P,
       items: Input.Keyboard.KeyCodes.I,
       modifier: Input.Keyboard.KeyCodes.G,
+      pace: Input.Keyboard.KeyCodes.F,
       lobby: Input.Keyboard.KeyCodes.ESC
     }) as Record<string, Input.Keyboard.Key>;
 
@@ -208,6 +210,13 @@ export class OnlineGameScene extends Scene {
         modifierPresetId: MODIFIER_PRESET_IDS[(index + 1) % MODIFIER_PRESET_IDS.length]
       });
     }
+
+    if (Input.Keyboard.JustDown(this.keys.pace)) {
+      const index = PACE_PRESET_IDS.indexOf(config.pacePresetId);
+      this.connection.configureLobby({
+        pacePresetId: PACE_PRESET_IDS[(index + 1) % PACE_PRESET_IDS.length]
+      });
+    }
   }
 
   private acceptSnapshot(snapshot: MatchSnapshot): void {
@@ -281,14 +290,14 @@ export class OnlineGameScene extends Scene {
       const mapName = OFFICIAL_MAPS[config.mapId].displayName.toUpperCase();
 
       this.status.setText(
-        `WAITING ${this.snapshot.connectedPlayers}/${config.maxPlayers} // READY ${this.snapshot.readyPlayerIds.length}/${this.snapshot.connectedPlayers} // MAP ${mapName} // ITEMS ${config.itemPresetId.toUpperCase()} // MOD ${config.modifierPresetId.toUpperCase()}${isCreator ? " // CREATOR" : ""}`
+        `WAITING ${this.snapshot.connectedPlayers}/${config.maxPlayers} // READY ${this.snapshot.readyPlayerIds.length}/${this.snapshot.connectedPlayers} // MAP ${mapName} // ITEMS ${config.itemPresetId.toUpperCase()} // MOD ${config.modifierPresetId.toUpperCase()} // PACE ${config.pacePresetId.toUpperCase()}${isCreator ? " // CREATOR" : ""}`
       );
 
       if (isCreator) {
         const start = allReady ? "ENTER START // " : "";
         const readyHelp = ready ? "R UNREADY" : "R READY";
         this.help.setText(
-          `${start}M MAP // P PLAYERS // I ITEMS // G MODIFIER // ${readyHelp} // T CHAT // ESC LOBBY`
+          `${start}M MAP // P PLAYERS // I ITEMS // G MODIFIER // F PACE // ${readyHelp} // T CHAT // ESC LOBBY`
         );
       } else if (allReady) {
         this.help.setText("ALL READY // WAITING FOR CREATOR // T CHAT // ESC LOBBY");
@@ -304,7 +313,7 @@ export class OnlineGameScene extends Scene {
         : "ROUND DRAW";
       const voted = selfId ? this.snapshot.rematchPlayerIds.includes(selfId) : false;
       this.status.setText(
-        `${outcome} // MAP ${this.state?.mapId ?? "-"} // ITEMS ${this.state?.rules.itemPresetId ?? "-"} // MOD ${this.state?.rules.modifierPresetId ?? "-"}`
+        `${outcome} // MAP ${this.state?.mapId ?? "-"} // ITEMS ${this.state?.rules.itemPresetId ?? "-"} // MOD ${this.state?.rules.modifierPresetId ?? "-"} // PACE ${this.state?.rules.pacePresetId ?? "-"}`
       );
       this.help.setText(voted ? "REMATCH VOTE SENT // ESC LOBBY" : "M VOTE REMATCH // ESC LOBBY");
       return;
@@ -328,7 +337,7 @@ export class OnlineGameScene extends Scene {
     }
 
     this.status.setText(
-      `ONLINE // ${clock}${danger} // MAP ${this.state.mapId} // RANGE ${self.blastRange} CORES ${self.coreCapacity} SPEED ${self.speedTier}`
+      `ONLINE // ${clock}${danger} // MAP ${this.state.mapId} // PACE ${this.state.rules.pacePresetId.toUpperCase()} // RANGE ${self.blastRange} CORES ${self.coreCapacity} SPEED ${self.speedTier}`
     );
     this.help.setText("WASD/ARROWS MOVE // SPACE CORE // ESC LOBBY");
   }

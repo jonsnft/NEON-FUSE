@@ -25,11 +25,25 @@ The room creator controls the authoritative waiting-room configuration. Current 
 - `P` — cycle room player capacity between the current minimum and 8.
 - `I` — cycle item preset (`standard`, `no-speed`, `no-items`).
 - `G` — cycle modifier preset (`standard`, `no-sudden-death`).
+- `F` — cycle pace preset (`standard`, `tactical`). `standard` keeps the tested 1800 ms Core fuse; `tactical` uses 2400 ms for a larger reaction/planning window.
 - `R` — Ready / Unready.
 - `T` — lobby chat.
 - `Enter` — creator starts only when every currently connected player is Ready and at least two players are present.
 
 An accepted creator configuration change clears every Ready vote. Ready therefore means acceptance of the exact rules currently displayed. The creator may start with fewer players than the room maximum when every present player is Ready, or keep waiting for additional players.
+
+Clients select only allowlisted preset IDs. Raw fuse milliseconds are not accepted from clients; Core timing is resolved from the authoritative `GameState.rules`.
+
+## Balance baselines
+
+Official maps expose deterministic balance metrics through the shared `analyzeArenaBalance()` helper. Tests currently lock:
+
+- hard / soft / floor tile counts;
+- soft-block ratio of potential traversable space;
+- immediate floor egress from each spawn;
+- minimum pairwise Manhattan spawn distance.
+
+These are regression/reference metrics for research and playtesting, not claims that one map density is universally optimal.
 
 ## Game-design governance
 

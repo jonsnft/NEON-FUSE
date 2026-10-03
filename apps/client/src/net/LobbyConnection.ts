@@ -15,6 +15,7 @@ export interface LobbyRoomInfo {
     mapId?: string;
     itemPresetId?: string;
     modifierPresetId?: string;
+    pacePresetId?: string;
   };
 }
 

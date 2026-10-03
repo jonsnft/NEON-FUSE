@@ -107,7 +107,8 @@ export class LobbyScene extends Scene {
         const map = room.metadata?.mapId ?? "grid-zero";
         const items = room.metadata?.itemPresetId ?? "standard";
         const modifier = room.metadata?.modifierPresetId ?? "standard";
-        return `[${index + 1}] ${room.roomId.slice(0, 8)}  ${phase.toUpperCase()}  ${players}/${max}  READY:${ready}  MAP:${map}  ITEMS:${items}  MOD:${modifier}`;
+        const pace = room.metadata?.pacePresetId ?? "standard";
+        return `[${index + 1}] ${room.roomId.slice(0, 8)}  ${phase.toUpperCase()}  ${players}/${max}  READY:${ready}  MAP:${map}  ITEMS:${items}  MOD:${modifier}  PACE:${pace}`;
       }).join("\n")
     );
   }
