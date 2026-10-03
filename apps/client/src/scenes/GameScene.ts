@@ -10,13 +10,15 @@ import {
 } from "@neon-fuse/shared";
 import { CyberpunkAssetLayer } from "../render/CyberpunkAssetLayer";
 import { NeonWorldRenderer } from "../render/NeonWorldRenderer";
+import { SpriteAtlasLayer } from "../render/SpriteAtlasLayer";
+import { preloadProductionAtlas } from "../render/spriteAtlas";
 
 const LOCAL_PLAYER = "local-player";
 
 export class GameScene extends Scene {
   private state!: GameState;
   private worldRenderer!: NeonWorldRenderer;
-  private assetLayer!: CyberpunkAssetLayer;
+  private assetLayer!: CyberpunkAssetLayer | SpriteAtlasLayer;
   private status!: GameObjects.Text;
   private keys!: Record<string, Input.Keyboard.Key>;
   private nextMoveAt = 0;
@@ -25,10 +27,16 @@ export class GameScene extends Scene {
     super("game");
   }
 
+  preload(): void {
+    preloadProductionAtlas(this);
+  }
+
   create(): void {
     this.state = createArena([LOCAL_PLAYER]);
     this.worldRenderer = new NeonWorldRenderer(this);
-    this.assetLayer = new CyberpunkAssetLayer(this);
+    this.assetLayer = SpriteAtlasLayer.isAvailable(this)
+      ? new SpriteAtlasLayer(this)
+      : new CyberpunkAssetLayer(this);
     this.status = this.add.text(10, 8, "", {
       fontFamily: "monospace",
       fontSize: "14px",

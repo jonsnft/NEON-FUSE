@@ -1,5 +1,6 @@
 import { GameObjects, Input, Scene } from "phaser";
 import { LobbyConnection, type LobbyRoomInfo } from "../net/LobbyConnection";
+import { preloadProductionAtlas } from "../render/spriteAtlas";
 
 export class LobbyScene extends Scene {
   private rooms: LobbyRoomInfo[] = [];
@@ -12,6 +13,10 @@ export class LobbyScene extends Scene {
 
   constructor() {
     super("lobby");
+  }
+
+  preload(): void {
+    preloadProductionAtlas(this);
   }
 
   create(): void {
