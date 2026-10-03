@@ -2,7 +2,7 @@
 
 Date: 2026-10-03
 Branch: `feature/cyberpunk-presentation-layer`
-Status: Pending final CI
+Status: Verified
 
 ## Implemented
 - client-only `NeonWorldRenderer` presentation layer;
@@ -15,7 +15,7 @@ Status: Pending final CI
 - browser shell receives restrained cyan/magenta atmosphere and scanline treatment.
 
 ## Authority audit
-No shared simulation, protocol or server files were changed. The renderer receives `GameState` as read-only presentation input and stores its own visual coordinates. Visual coordinates are not used for intents, collision, Core placement or hit resolution.
+No shared simulation, protocol or server files were changed. The renderer receives `GameState` as presentation input and stores its own visual coordinates. Visual coordinates are not used for intents, collision, Core placement or hit resolution.
 
 ## Performance posture
 Phase 1 uses a single Phaser Graphics surface and normal draw calls. No unbounded particles and no custom shader/post-FX dependency were added. GPU bloom/CRT remains deferred to an optional quality tier.
@@ -29,4 +29,4 @@ Phase 1 uses a single Phaser Graphics surface and normal draw calls. No unbounde
 - complete lobby/store visual redesign.
 
 ## Verification
-Pending architecture guard, typecheck, tests, production build, Compose validation and both Docker image builds.
+Implementation CI run #80 passed architecture guard, typecheck, all tests, production build, Compose validation, server release image build and client release image build. The final documentation-only head is required to pass the same CI gate before merge.
