@@ -1,4 +1,6 @@
 import { GAME } from "../constants/game";
+import { pickupKindsForRules } from "../rules/catalog";
+import { DEFAULT_GAME_RULES, type GameRules } from "../rules/types";
 import type { GameState, SimPickup, SimPlayer, TileKind } from "./types";
 import { indexOf } from "./types";
 
@@ -19,7 +21,10 @@ const spawnPoints = [
   [Math.floor(GAME.gridWidth / 2), GAME.gridHeight - 2]
 ] as const;
 
-export function createArena(playerIds: string[] = ["local-player"]): GameState {
+export function createArena(
+  playerIds: string[] = ["local-player"],
+  rules: GameRules = DEFAULT_GAME_RULES
+): GameState {
   if (playerIds.length < 1 || playerIds.length > 8) {
     throw new Error("createArena supports 1 to 8 players");
   }
@@ -55,7 +60,9 @@ export function createArena(playerIds: string[] = ["local-player"]): GameState {
     }
   }
 
-  for (const pickup of pickupPlan) {
+  const allowedPickups = new Set(pickupKindsForRules(rules));
+  const activePickupPlan = pickupPlan.filter((pickup) => allowedPickups.has(pickup.kind));
+  for (const pickup of activePickupPlan) {
     if (!safe.has(`${pickup.x},${pickup.y}`)) {
       tiles[indexOf({ width }, pickup.x, pickup.y)] = "soft";
     }
@@ -76,13 +83,14 @@ export function createArena(playerIds: string[] = ["local-player"]): GameState {
 
   return {
     mapId: "grid-zero",
+    rules: { ...rules },
     width,
     height,
     tiles,
     players,
     cores: [],
     blasts: [],
-    pickups: pickupPlan.filter((p) => !safe.has(`${p.x},${p.y}`)).map((p) => ({ ...p })),
+    pickups: activePickupPlan.filter((p) => !safe.has(`${p.x},${p.y}`)).map((p) => ({ ...p })),
     elapsedMs: 0,
     roundDurationMs: GAME.targetMatchSeconds * 1000,
     suddenDeathStartMs: GAME.suddenDeathStartSeconds * 1000,
