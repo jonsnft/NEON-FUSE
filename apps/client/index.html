@@ -12,7 +12,18 @@
         <span id="visual-quality">VISUAL MEDIUM</span>
         <span>V: Visual Quality</span>
       </div>
-      <div id="game"></div>
+      <div id="play-layout">
+        <div id="game"></div>
+        <aside id="match-hud" hidden aria-live="polite">
+          <div class="match-hud__accent"></div>
+          <div class="match-hud__content">
+            <div id="match-hud-eyebrow" class="match-hud__eyebrow">NEON FUSE</div>
+            <div id="match-hud-primary" class="match-hud__primary"></div>
+            <div id="match-hud-secondary" class="match-hud__secondary"></div>
+            <div id="match-hud-controls" class="match-hud__controls"></div>
+          </div>
+        </aside>
+      </div>
     </main>
     <script type="module" src="/src/main.ts"></script>
   </body>
