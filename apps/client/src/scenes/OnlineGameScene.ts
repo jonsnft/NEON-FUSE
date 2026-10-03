@@ -21,6 +21,11 @@ import { preloadProductionAtlas } from "../render/spriteAtlas";
 import { Sfx } from "../audio/Sfx";
 import { LobbyChat } from "../ui/LobbyChat";
 import { MatchHud } from "../ui/MatchHud";
+import {
+  finishedHudDetails,
+  playingHudDetails,
+  spectatingHudDetails
+} from "../ui/matchHudDetails";
 
 const TILE = 48;
 
@@ -321,7 +326,18 @@ export class OnlineGameScene extends Scene {
         controls = `${ready ? "R UNREADY" : "R READY"}   T CHAT   ESC LOBBY`;
       }
 
-      this.hud.show("NETWORK LOBBY", primary, secondary, controls, allReady ? "success" : "normal");
+      this.hud.show(
+        "NETWORK LOBBY",
+        primary,
+        secondary,
+        controls,
+        allReady ? "success" : "normal",
+        {
+          objective: isCreator
+            ? "SHAPE THE RUN — choose map, item set and pace, then start when the room is ready."
+            : "LOCK IN — ready up, read the rules, then adapt once the grid goes live."
+        }
+      );
       return;
     }
 
@@ -339,13 +355,14 @@ export class OnlineGameScene extends Scene {
         outcome,
         secondary,
         voted ? "REMATCH VOTE SENT   ESC LOBBY" : "M VOTE REMATCH   ESC LOBBY",
-        outcome === "ROUND WON" ? "success" : outcome === "ROUND LOST" ? "danger" : "normal"
+        outcome === "ROUND WON" ? "success" : outcome === "ROUND LOST" ? "danger" : "normal",
+        state ? finishedHudDetails(state, selfId ?? undefined) : {}
       );
       return;
     }
 
     const self = selfId && this.state ? playerById(this.state, selfId) : undefined;
-    if (!self || !this.state) {
+    if (!self || !this.state || !selfId) {
       this.hud.show("NETWORK", this.connectionStatus, "Waiting for player state...", "ESC  LOBBY");
       return;
     }
@@ -362,7 +379,8 @@ export class OnlineGameScene extends Scene {
         suddenDeath ? `${clock}  SUDDEN DEATH` : clock,
         `SPECTATING\nALIVE ${alive}/${total}\nMAP ${this.state.mapId}`,
         "ESC  LOBBY",
-        "danger"
+        "danger",
+        spectatingHudDetails(this.state)
       );
       return;
     }
@@ -374,7 +392,8 @@ export class OnlineGameScene extends Scene {
       primary,
       secondary,
       "WASD / ARROWS  MOVE\nSPACE  PLACE CORE\nESC  LOBBY",
-      suddenDeath ? "danger" : "normal"
+      suddenDeath ? "danger" : "normal",
+      playingHudDetails(this.state, selfId, self, alive)
     );
   }
 }
