@@ -10,6 +10,7 @@ export * from "./sim/createArena";
 export * from "./sim/actions";
 export * from "./sim/tick";
 export * from "./sim/suddenDeath";
+export * from "./analysis/arenaBalance";
 export * from "./cosmetics/types";
 export * from "./cosmetics/catalog";
 export * from "./cosmetics/validate";
