@@ -1,6 +1,8 @@
 import type { CreatorMapDefinition } from "../creator/types";
 import { createArenaFromMap } from "../creator/createArenaFromMap";
 import { validateCreatorMap } from "../creator/validateMap";
+import type { GameRules } from "../rules/types";
+import { DEFAULT_GAME_RULES } from "../rules/types";
 import type { GameState, TileKind } from "../sim/types";
 import type { GridPosition } from "../types/game";
 
@@ -106,6 +108,10 @@ export function normalizeOfficialMapId(value: unknown): OfficialMapId {
     : "grid-zero";
 }
 
-export function createOfficialArena(mapId: OfficialMapId, playerIds: string[]): GameState {
-  return createArenaFromMap(OFFICIAL_MAPS[mapId], playerIds);
+export function createOfficialArena(
+  mapId: OfficialMapId,
+  playerIds: string[],
+  rules: GameRules = DEFAULT_GAME_RULES
+): GameState {
+  return createArenaFromMap(OFFICIAL_MAPS[mapId], playerIds, rules);
 }
