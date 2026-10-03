@@ -1,4 +1,4 @@
-import { GameObjects, Input, Scene } from "phaser";
+import { Input, Scene } from "phaser";
 import {
   createArena,
   movePlayer,
@@ -12,14 +12,16 @@ import { CyberpunkAssetLayer } from "../render/CyberpunkAssetLayer";
 import { NeonWorldRenderer } from "../render/NeonWorldRenderer";
 import { SpriteAtlasLayer } from "../render/SpriteAtlasLayer";
 import { preloadProductionAtlas } from "../render/spriteAtlas";
+import { MatchHud } from "../ui/MatchHud";
 
 const LOCAL_PLAYER = "local-player";
+const TILE = 48;
 
 export class GameScene extends Scene {
   private state!: GameState;
   private worldRenderer!: NeonWorldRenderer;
   private assetLayer!: CyberpunkAssetLayer | SpriteAtlasLayer;
-  private status!: GameObjects.Text;
+  private hud!: MatchHud;
   private keys!: Record<string, Input.Keyboard.Key>;
   private nextMoveAt = 0;
 
@@ -37,11 +39,8 @@ export class GameScene extends Scene {
     this.assetLayer = SpriteAtlasLayer.isAvailable(this)
       ? new SpriteAtlasLayer(this)
       : new CyberpunkAssetLayer(this);
-    this.status = this.add.text(10, 8, "", {
-      fontFamily: "monospace",
-      fontSize: "14px",
-      color: "#53f3ff"
-    }).setDepth(10);
+    this.hud = new MatchHud(this);
+    this.hud.setArenaWidth(this.state.width * TILE);
 
     if (!this.input.keyboard) throw new Error("Keyboard input unavailable");
 
@@ -65,6 +64,7 @@ export class GameScene extends Scene {
     this.renderStatus();
 
     this.events.once("shutdown", () => {
+      this.hud.destroy();
       this.assetLayer.destroy();
       this.worldRenderer.destroy();
     });
@@ -73,6 +73,7 @@ export class GameScene extends Scene {
   update(time: number, delta: number): void {
     if (Input.Keyboard.JustDown(this.keys.reset)) {
       this.state = createArena([LOCAL_PLAYER]);
+      this.hud.setArenaWidth(this.state.width * TILE);
       this.worldRenderer.clearState();
       this.assetLayer.clearState();
     }
@@ -107,10 +108,22 @@ export class GameScene extends Scene {
 
   private renderStatus(): void {
     const player = playerById(this.state, LOCAL_PLAYER);
-    this.status.setText(
-      player?.alive
-        ? `OFFLINE // RANGE ${player.blastRange}  CORES ${player.coreCapacity}  SPEED ${player.speedTier}`
-        : "SIGNAL LOST // PRESS R TO REBOOT"
+    if (!player?.alive) {
+      this.hud.show(
+        "OFFLINE SIMULATION",
+        "SIGNAL LOST",
+        `MAP ${this.state.mapId}\nRANGE ${player?.blastRange ?? "-"}   CORES ${player?.coreCapacity ?? "-"}   SPEED ${player?.speedTier ?? "-"}`,
+        "R  REBOOT",
+        "danger"
+      );
+      return;
+    }
+
+    this.hud.show(
+      "OFFLINE SIMULATION",
+      "LOCAL TEST",
+      `MAP ${this.state.mapId}\nRANGE ${player.blastRange}   CORES ${player.coreCapacity}   SPEED ${player.speedTier}`,
+      "WASD / ARROWS  MOVE\nSPACE  PLACE CORE\nR  REBOOT"
     );
   }
 }
