@@ -2,7 +2,7 @@
 
 Date: 2026-10-03
 Branch: `feature/visual-fx-phase-3`
-Status: Pending final CI
+Status: Verified
 
 ## Implemented
 - persistent `low` / `medium` / `high` visual quality tiers;
@@ -25,4 +25,4 @@ No shared simulation, protocol, server, economy or entitlement behavior is chang
 - reduced motion caps FX at 60 and disables movement-heavy presentation effects.
 
 ## Verification
-Pending architecture guard, typecheck, tests, production build, Compose validation and both Docker image builds.
+Implementation CI run #86 passed architecture guard, typecheck, all tests, production build, Compose validation, and both release Docker image builds. A final documentation-only CI run must pass before merge.
