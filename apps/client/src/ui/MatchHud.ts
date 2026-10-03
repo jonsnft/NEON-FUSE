@@ -13,9 +13,13 @@ export class MatchHud {
   private readonly secondary = requiredElement<HTMLElement>("match-hud-secondary");
   private readonly controls = requiredElement<HTMLElement>("match-hud-controls");
 
-  constructor() {
+  constructor(_scene?: unknown) {
     this.root.hidden = false;
     this.root.dataset.tone = "normal";
+  }
+
+  setArenaWidth(_width: number): void {
+    // DOM layout owns HUD placement; retained while scenes migrate off canvas sizing.
   }
 
   show(
