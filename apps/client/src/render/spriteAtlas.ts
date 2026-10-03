@@ -4,16 +4,13 @@ import type { Facing } from "./animatedPresentation";
 
 export type AvatarVariant = "cyan" | "lime" | "ghost";
 
-export const PRODUCTION_ATLAS_KEY = "neon-fuse-production";
+export const PRODUCTION_ATLAS_KEY = "neon-fuse-production-disabled";
 export const PRODUCTION_ATLAS_IMAGE = "/assets/neon-fuse-atlas.png";
 
-export const preloadProductionAtlas = (scene: Scene): void => {
-  if (scene.textures.exists(PRODUCTION_ATLAS_KEY)) return;
-  scene.load.spritesheet(PRODUCTION_ATLAS_KEY, PRODUCTION_ATLAS_IMAGE, {
-    frameWidth: 48,
-    frameHeight: 48
-  });
-};
+// The expanded production sheet is temporarily disabled after a visual regression
+// observed on real Raspberry Pi and macOS clients. Keeping the texture absent makes
+// SpriteAtlasLayer.isAvailable() fail closed and selects CyberpunkAssetLayer instead.
+export const preloadProductionAtlas = (_scene: Scene): void => {};
 
 const tileBase = (mapId: string): number => {
   if (mapId === "data-cross") return 3;
