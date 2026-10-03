@@ -14,6 +14,7 @@ import {
   resolveRound,
   tickSimulation,
   type ChatMessage,
+  type GameRules,
   type GameState,
   type LobbyConfig,
   type MatchSnapshot,
@@ -222,12 +223,19 @@ export class MatchRoom extends Room {
     void this.refreshMetadata();
   }
 
+  private gameRules(): GameRules {
+    return {
+      itemPresetId: this.config.itemPresetId,
+      modifierPresetId: this.config.modifierPresetId
+    };
+  }
+
   private tryStartRound(requesterId: string): void {
     if (this.game || requesterId !== this.creatorPlayerId || this.clients.length < MIN_PLAYERS) return;
     const ids = this.clients.map((client) => client.sessionId);
     if (!everyConnectedHasVoted(ids, this.readyIds)) return;
 
-    this.game = createOfficialArena(this.config.mapId, ids, this.config);
+    this.game = createOfficialArena(this.config.mapId, ids, this.gameRules());
     this.rematchIds.clear();
     this.readyIds.clear();
     for (const id of ids) this.lastSeq.set(id, -1);
@@ -241,7 +249,7 @@ export class MatchRoom extends Room {
     const ids = roster ?? this.clients.map((client) => client.sessionId);
     if (!everyConnectedHasVoted(ids, this.rematchIds)) return;
 
-    this.game = createOfficialArena(this.config.mapId, ids, this.config);
+    this.game = createOfficialArena(this.config.mapId, ids, this.gameRules());
     this.rematchIds.clear();
     for (const id of ids) this.lastSeq.set(id, -1);
     void this.lock();
