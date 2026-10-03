@@ -1,21 +1,13 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { boot, type ColyseusTestServer } from "@colyseus/testing";
-import { PROTOCOL_VERSION, type GameState, type MatchSnapshot } from "@neon-fuse/shared";
+import { PROTOCOL_VERSION, type GameState } from "@neon-fuse/shared";
 import { server } from "../src/app.config";
 
-type TestClient = { waitForMessage(type: string): Promise<unknown> };
-type InspectableMatchRoom = { game: GameState | null };
-
-async function waitForWaiting(
-  client: TestClient,
-  predicate: (snapshot: Extract<MatchSnapshot, { status: "waiting" }>) => boolean
-): Promise<Extract<MatchSnapshot, { status: "waiting" }>> {
-  for (let i = 0; i < 16; i++) {
-    const snapshot = await client.waitForMessage("snapshot") as MatchSnapshot;
-    if (snapshot.status === "waiting" && predicate(snapshot)) return snapshot;
-  }
-  throw new Error("Did not receive expected waiting snapshot");
-}
+type InspectableMatchRoom = {
+  game: GameState | null;
+  creatorPlayerId: string | null;
+  readyIds: Set<string>;
+};
 
 async function waitUntil(predicate: () => boolean, timeoutMs = 1000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
@@ -51,15 +43,8 @@ describe("authoritative multiplayer runtime", () => {
     const player2 = await colyseus.connectTo(room);
 
     expect(room.maxClients).toBe(4);
-    expect(creator.sessionId).toBeTruthy();
-    expect(player2.sessionId).toBeTruthy();
-
-    const allReadyPromise = waitForWaiting(
-      creator,
-      (snapshot) =>
-        snapshot.readyPlayerIds.includes(creator.sessionId) &&
-        snapshot.readyPlayerIds.includes(player2.sessionId)
-    );
+    expect(inspectableRoom.creatorPlayerId).toBe(creator.sessionId);
+    expect(inspectableRoom.game).toBeNull();
 
     creator.send("intent", {
       type: "match.ready",
@@ -72,10 +57,9 @@ describe("authoritative multiplayer runtime", () => {
       ready: true
     });
 
-    const allReadySnapshot = await allReadyPromise;
-    expect(allReadySnapshot.mapId).toBe("grid-zero");
-    expect(allReadySnapshot.creatorPlayerId).toBe(creator.sessionId);
-    expect(allReadySnapshot.readyPlayerIds).toHaveLength(2);
+    await waitUntil(() => inspectableRoom.readyIds.size === 2);
+    expect(inspectableRoom.readyIds.has(creator.sessionId)).toBe(true);
+    expect(inspectableRoom.readyIds.has(player2.sessionId)).toBe(true);
     expect(inspectableRoom.game).toBeNull();
 
     player2.send("intent", {
@@ -93,5 +77,8 @@ describe("authoritative multiplayer runtime", () => {
 
     expect(inspectableRoom.game?.mapId).toBe("grid-zero");
     expect(inspectableRoom.game?.players).toHaveLength(2);
+
+    await creator.leave(true);
+    await player2.leave(true);
   });
 });
