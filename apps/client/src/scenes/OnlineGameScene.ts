@@ -69,6 +69,7 @@ export class OnlineGameScene extends Scene {
       d: Input.Keyboard.KeyCodes.D,
       core: Input.Keyboard.KeyCodes.SPACE,
       ready: Input.Keyboard.KeyCodes.R,
+      start: Input.Keyboard.KeyCodes.ENTER,
       rematch: Input.Keyboard.KeyCodes.M,
       lobby: Input.Keyboard.KeyCodes.ESC
     }) as Record<string, Input.Keyboard.Key>;
@@ -105,6 +106,18 @@ export class OnlineGameScene extends Scene {
           type: "match.ready",
           version: PROTOCOL_VERSION,
           ready
+        });
+      }
+
+      const selfId = this.connection.playerId;
+      const allReady =
+        this.snapshot.connectedPlayers >= this.snapshot.requiredPlayers &&
+        this.snapshot.readyPlayerIds.length === this.snapshot.connectedPlayers;
+      const isCreator = Boolean(selfId && selfId === this.snapshot.creatorPlayerId);
+      if (isCreator && allReady && Input.Keyboard.JustDown(this.keys.start)) {
+        this.connection.send({
+          type: "match.start",
+          version: PROTOCOL_VERSION
         });
       }
       return;
@@ -210,10 +223,24 @@ export class OnlineGameScene extends Scene {
     if (this.snapshot.status === "waiting") {
       const ready = selfId ? this.snapshot.readyPlayerIds.includes(selfId) : false;
       const map = this.snapshot.mapId ?? this.mapId;
+      const isCreator = Boolean(selfId && selfId === this.snapshot.creatorPlayerId);
+      const allReady =
+        this.snapshot.connectedPlayers >= this.snapshot.requiredPlayers &&
+        this.snapshot.readyPlayerIds.length === this.snapshot.connectedPlayers;
+
       this.status.setText(
-        `WAITING ${this.snapshot.connectedPlayers}/${this.snapshot.maxPlayers} // READY ${this.snapshot.readyPlayerIds.length}/${this.snapshot.connectedPlayers} // MAP ${map}`
+        `WAITING ${this.snapshot.connectedPlayers}/${this.snapshot.maxPlayers} // READY ${this.snapshot.readyPlayerIds.length}/${this.snapshot.connectedPlayers} // MAP ${map}${isCreator ? " // CREATOR" : ""}`
       );
-      this.help.setText(ready ? "R = UNREADY // ESC = LOBBY" : "R = READY // ESC = LOBBY");
+
+      if (isCreator && allReady) {
+        this.help.setText("ENTER = START // R = UNREADY // ESC = LOBBY");
+      } else if (isCreator) {
+        this.help.setText(ready ? "WAITING FOR ALL PLAYERS // R = UNREADY // ESC = LOBBY" : "R = READY // ESC = LOBBY");
+      } else if (allReady) {
+        this.help.setText("ALL READY // WAITING FOR CREATOR // ESC = LOBBY");
+      } else {
+        this.help.setText(ready ? "R = UNREADY // ESC = LOBBY" : "R = READY // ESC = LOBBY");
+      }
       return;
     }
 
