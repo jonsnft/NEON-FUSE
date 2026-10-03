@@ -1,11 +1,14 @@
 import { GAME } from "../constants/game";
+import { DEFAULT_GAME_RULES, type GameRules } from "../rules/types";
+import { pickupKindsForRules } from "../rules/catalog";
 import type { SimPickup, SimPlayer, GameState } from "../sim/types";
 import type { CreatorMapDefinition } from "./types";
 import { validateCreatorMap } from "./validateMap";
 
 export function createArenaFromMap(
   map: CreatorMapDefinition,
-  playerIds: string[]
+  playerIds: string[],
+  rules: GameRules = DEFAULT_GAME_RULES
 ): GameState {
   const validated = validateCreatorMap(map);
   if (!validated.ok || !validated.value) {
@@ -37,11 +40,15 @@ export function createArenaFromMap(
     .filter(({ tile }) => tile === "soft")
     .map(({ index }) => ({ x: index % mapValue.width, y: Math.floor(index / mapValue.width) }));
 
-  const pickupKinds: SimPickup["kind"][] = ["range", "capacity", "speed"];
+  const pickupKinds = [...pickupKindsForRules(rules)];
   const pickupPositions =
     softCells.length <= pickupKinds.length
       ? softCells
-      : [softCells[0], softCells[Math.floor(softCells.length / 2)], softCells[softCells.length - 1]];
+      : pickupKinds.map((_, index) => {
+          if (pickupKinds.length === 1) return softCells[Math.floor(softCells.length / 2)];
+          const position = Math.round(index * (softCells.length - 1) / (pickupKinds.length - 1));
+          return softCells[position];
+        });
   const pickups: SimPickup[] = pickupPositions.map((position, i) => ({
     ...position,
     kind: pickupKinds[i],
@@ -50,6 +57,7 @@ export function createArenaFromMap(
 
   return {
     mapId: mapValue.id,
+    rules: { ...rules },
     width: mapValue.width,
     height: mapValue.height,
     tiles: [...mapValue.tiles],
