@@ -1,0 +1,6 @@
+- ready no longer starts a round
+- creator identity is server-owned
+- creator can start only when all connected players are ready
+- creator transfer before game start is deterministic
+- non-creator start requests are ignored
+- runtime test covers the gate
