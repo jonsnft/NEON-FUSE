@@ -41,6 +41,12 @@ const sameConfig = (a: LobbyConfig, b: LobbyConfig): boolean =>
   a.modifierPresetId === b.modifierPresetId &&
   a.pacePresetId === b.pacePresetId;
 
+const totalPickupsCollected = (game: GameState): number =>
+  game.metrics.players.reduce(
+    (sum, player) => sum + player.pickupsCollected.range + player.pickupsCollected.capacity + player.pickupsCollected.speed,
+    0
+  );
+
 export class MatchRoom extends Room {
   maxClients = HARD_MAX_PLAYERS;
 
@@ -144,7 +150,19 @@ export class MatchRoom extends Room {
           winnerSubjectId: this.game.winnerId
             ? this.subjectIds.get(this.game.winnerId) ?? null
             : null,
-          playerCount: this.game.players.length
+          playerCount: this.game.players.length,
+          metrics: {
+            durationMs: this.game.elapsedMs,
+            totalCorePlacements: this.game.metrics.players.reduce((sum, player) => sum + player.coresPlaced, 0),
+            totalPickupsCollected: totalPickupsCollected(this.game),
+            chainDetonations: this.game.metrics.chainDetonations,
+            reachedSuddenDeath: this.game.metrics.reachedSuddenDeath,
+            eliminationTimesMs: this.game.metrics.players.map((player) => player.eliminatedAtMs),
+            spawnEliminations: this.game.metrics.players.map((player) => ({
+              spawnIndex: player.spawnIndex,
+              eliminatedAtMs: player.eliminatedAtMs
+            }))
+          }
         });
         void this.refreshMetadata();
       }
