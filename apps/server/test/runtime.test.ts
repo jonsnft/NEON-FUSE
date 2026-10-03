@@ -29,37 +29,53 @@ describe("authoritative multiplayer runtime", () => {
     await colyseus.cleanup();
   });
 
-  it("boots a two-client match and starts only after both clients are ready", async () => {
+  it("requires creator authorization after every connected player is ready", async () => {
     const room = await colyseus.createRoom("match", {
       maxPlayers: 4,
       mapId: "grid-zero"
     });
-    const client1 = await colyseus.connectTo(room);
-    const client2 = await colyseus.connectTo(room);
+    const creator = await colyseus.connectTo(room);
+    const player2 = await colyseus.connectTo(room);
 
     expect(room.maxClients).toBe(4);
-    expect(client1.sessionId).toBeTruthy();
-    expect(client2.sessionId).toBeTruthy();
+    expect(creator.sessionId).toBeTruthy();
+    expect(player2.sessionId).toBeTruthy();
 
-    client1.send("intent", {
+    creator.send("intent", {
+      type: "match.ready",
+      version: PROTOCOL_VERSION,
+      ready: true
+    });
+    player2.send("intent", {
       type: "match.ready",
       version: PROTOCOL_VERSION,
       ready: true
     });
 
-    const waitingSnapshot = await waitForStatus(client1, "waiting");
-    expect(waitingSnapshot.status).toBe("waiting");
-    if (waitingSnapshot.status === "waiting") {
-      expect(waitingSnapshot.mapId).toBe("grid-zero");
+    const allReadySnapshot = await waitForStatus(creator, "waiting");
+    expect(allReadySnapshot.status).toBe("waiting");
+    if (allReadySnapshot.status === "waiting") {
+      expect(allReadySnapshot.mapId).toBe("grid-zero");
+      expect(allReadySnapshot.creatorPlayerId).toBe(creator.sessionId);
+      expect(allReadySnapshot.readyPlayerIds).toEqual(
+        expect.arrayContaining([creator.sessionId, player2.sessionId])
+      );
     }
 
-    client2.send("intent", {
-      type: "match.ready",
-      version: PROTOCOL_VERSION,
-      ready: true
+    player2.send("intent", {
+      type: "match.start",
+      version: PROTOCOL_VERSION
     });
 
-    const playingSnapshot = await waitForStatus(client1, "playing");
+    const rejectedStartSnapshot = await waitForStatus(creator, "waiting");
+    expect(rejectedStartSnapshot.status).toBe("waiting");
+
+    creator.send("intent", {
+      type: "match.start",
+      version: PROTOCOL_VERSION
+    });
+
+    const playingSnapshot = await waitForStatus(creator, "playing");
     expect(playingSnapshot.status).toBe("playing");
     if (playingSnapshot.status === "playing") {
       expect(playingSnapshot.game.mapId).toBe("grid-zero");
