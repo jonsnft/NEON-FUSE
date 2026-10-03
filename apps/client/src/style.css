@@ -124,7 +124,13 @@ html[data-visual-quality="high"] canvas {
     drop-shadow(0 0 6px rgba(83, 243, 255, .12));
 }
 
-html[data-reduced-motion="true"] #game::after,
+html[data-reduced-motion="true"] #game::after {
+  animation: none;
+}
+html[data-reduced-motion="true"] canvas {
+  transition: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   #game::after {
     animation: none;
