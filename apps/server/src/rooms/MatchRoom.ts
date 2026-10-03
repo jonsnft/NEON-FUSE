@@ -38,7 +38,8 @@ const sameConfig = (a: LobbyConfig, b: LobbyConfig): boolean =>
   a.maxPlayers === b.maxPlayers &&
   a.mapId === b.mapId &&
   a.itemPresetId === b.itemPresetId &&
-  a.modifierPresetId === b.modifierPresetId;
+  a.modifierPresetId === b.modifierPresetId &&
+  a.pacePresetId === b.pacePresetId;
 
 export class MatchRoom extends Room {
   maxClients = HARD_MAX_PLAYERS;
@@ -226,7 +227,8 @@ export class MatchRoom extends Room {
   private gameRules(): GameRules {
     return {
       itemPresetId: this.config.itemPresetId,
-      modifierPresetId: this.config.modifierPresetId
+      modifierPresetId: this.config.modifierPresetId,
+      pacePresetId: this.config.pacePresetId
     };
   }
 
@@ -351,7 +353,8 @@ export class MatchRoom extends Room {
       readyPlayers: this.readyIds.size,
       mapId: this.config.mapId,
       itemPresetId: this.config.itemPresetId,
-      modifierPresetId: this.config.modifierPresetId
+      modifierPresetId: this.config.modifierPresetId,
+      pacePresetId: this.config.pacePresetId
     });
   }
 }
