@@ -102,10 +102,10 @@ export class MatchHud {
       const h = Math.max(160, height - 16);
       this.panel.setPosition(x, y).setSize(w, h);
       this.accent.setPosition(x, y).setSize(3, h);
-      this.eyebrow.setPosition(x + 16, y + 16).setWordWrapWidth(w - 32);
-      this.primary.setPosition(x + 16, y + 42).setWordWrapWidth(w - 32);
-      this.secondary.setPosition(x + 16, y + 86).setWordWrapWidth(w - 32);
-      this.controls.setPosition(x + 16, y + h - 72).setWordWrapWidth(w - 32);
+      this.eyebrow.setPosition(x + 16, y + 16).setFontSize(11).setWordWrapWidth(w - 32);
+      this.primary.setPosition(x + 16, y + 42).setFontSize(20).setWordWrapWidth(w - 32);
+      this.secondary.setPosition(x + 16, y + 86).setFontSize(12).setWordWrapWidth(w - 32);
+      this.controls.setPosition(x + 16, y + h - 72).setFontSize(11).setWordWrapWidth(w - 32);
       return;
     }
 
@@ -115,7 +115,7 @@ export class MatchHud {
     const h = 94;
     this.panel.setPosition(x, y).setSize(w, h);
     this.accent.setPosition(x, y).setSize(3, h);
-    this.eyebrow.setPosition(x + 14, y + 10).setWordWrapWidth(w - 28);
+    this.eyebrow.setPosition(x + 14, y + 10).setFontSize(10).setWordWrapWidth(w - 28);
     this.primary.setPosition(x + 14, y + 28).setFontSize(16).setWordWrapWidth(w - 28);
     this.secondary.setPosition(x + 14, y + 52).setFontSize(11).setWordWrapWidth(w - 28);
     this.controls.setPosition(x + 14, y + 74).setFontSize(10).setWordWrapWidth(w - 28);
