@@ -6,9 +6,9 @@ import {
   type PlayerPresentation
 } from "@neon-fuse/shared";
 import { MOTION, NEON } from "./neonTheme";
+import { getVisualPreferences } from "./visualSettings";
 
 export const TILE = 48;
-const MAX_TRANSIENT_FX = 180;
 const CAMERA_SHAKE_COOLDOWN_MS = 180;
 
 interface VisualPlayer {
@@ -124,23 +124,25 @@ export class NeonWorldRenderer {
   }
 
   render(timeMs: number, deltaMs: number): void {
+    const prefs = getVisualPreferences();
+    const motionTime = prefs.ambientMotionEnabled ? timeMs : 0;
     const g = this.graphics;
     g.clear();
-    this.drawBackdrop(g, timeMs);
+    this.drawBackdrop(g, motionTime);
 
     const state = this.state;
     if (!state) return;
 
     this.pruneFx(timeMs);
-    this.drawArena(g, state, timeMs);
+    this.drawArena(g, state, motionTime);
     this.drawTransientFx(g, timeMs, "block");
-    this.drawPickups(g, state, timeMs);
+    this.drawPickups(g, state, motionTime);
     this.drawTransientFx(g, timeMs, "pickup");
-    this.drawCores(g, state, timeMs);
+    this.drawCores(g, state, motionTime);
     this.drawTransientFx(g, timeMs, "core");
-    this.drawBlasts(g, state, timeMs);
+    this.drawBlasts(g, state, motionTime);
     this.drawTransientFx(g, timeMs, "blast");
-    this.drawPlayers(g, state, deltaMs, timeMs);
+    this.drawPlayers(g, state, deltaMs, motionTime, timeMs);
     this.drawTransientFx(g, timeMs, "trail");
   }
 
@@ -158,7 +160,6 @@ export class NeonWorldRenderer {
   }
 
   private deriveSnapshotFx(previous: PresentationBaseline, state: GameState, now: number): void {
-    const nextCoreKeys = new Set(state.cores.map((core) => coreKey(core.ownerId, core.x, core.y)));
     for (const core of state.cores) {
       if (!previous.cores.has(coreKey(core.ownerId, core.x, core.y))) {
         this.emitFx("core", core.x * TILE + TILE / 2, core.y * TILE + TILE / 2, NEON.magenta, now, 360);
@@ -174,7 +175,12 @@ export class NeonWorldRenderer {
       }
     }
 
-    if (newBlastCells > 0 && now - this.lastCameraShakeAt >= CAMERA_SHAKE_COOLDOWN_MS) {
+    const prefs = getVisualPreferences();
+    if (
+      prefs.cameraShakeEnabled &&
+      newBlastCells > 0 &&
+      now - this.lastCameraShakeAt >= CAMERA_SHAKE_COOLDOWN_MS
+    ) {
       this.lastCameraShakeAt = now;
       this.scene.cameras.main.shake(85, Math.min(0.0032, 0.0015 + newBlastCells * 0.00022));
     }
@@ -204,8 +210,6 @@ export class NeonWorldRenderer {
           : NEON.amber;
       this.emitFx("pickup", pickup.x * TILE + TILE / 2, pickup.y * TILE + TILE / 2, color, now, 420);
     }
-
-    void nextCoreKeys;
   }
 
   private emitFx(
@@ -216,6 +220,9 @@ export class NeonWorldRenderer {
     startedAt: number,
     durationMs: number
   ): void {
+    const prefs = getVisualPreferences();
+    if (kind === "trail" && !prefs.trailsEnabled) return;
+
     this.transientFx.push({
       kind,
       x,
@@ -225,8 +232,8 @@ export class NeonWorldRenderer {
       durationMs,
       seed: this.nextSeed++
     });
-    if (this.transientFx.length > MAX_TRANSIENT_FX) {
-      this.transientFx.splice(0, this.transientFx.length - MAX_TRANSIENT_FX);
+    if (this.transientFx.length > prefs.transientFxCap) {
+      this.transientFx.splice(0, this.transientFx.length - prefs.transientFxCap);
     }
   }
 
@@ -303,7 +310,9 @@ export class NeonWorldRenderer {
     minRadius: number,
     travel: number
   ): void {
-    for (let i = 0; i < count; i++) {
+    const prefs = getVisualPreferences();
+    const actualCount = prefs.quality === "low" ? Math.ceil(count / 2) : count;
+    for (let i = 0; i < actualCount; i++) {
       const angle = seededUnit(fx.seed * 31 + i) * Math.PI * 2;
       const radius = minRadius + progress * (travel * (0.7 + seededUnit(fx.seed * 43 + i) * 0.5));
       const x = fx.x + Math.cos(angle) * radius;
@@ -446,9 +455,11 @@ export class NeonWorldRenderer {
     g: GameObjects.Graphics,
     state: GameState,
     deltaMs: number,
-    timeMs: number
+    motionTimeMs: number,
+    realTimeMs: number
   ): void {
     const follow = 1 - Math.exp(-Math.max(0, deltaMs) / MOTION.playerFollowMs);
+    const prefs = getVisualPreferences();
 
     for (const player of state.players) {
       const visual = this.players.get(player.id);
@@ -461,16 +472,17 @@ export class NeonWorldRenderer {
       visual.x += (visual.targetX - visual.x) * follow;
       visual.y += (visual.targetY - visual.y) * follow;
 
-      if (player.alive) {
+      if (player.alive && prefs.trailsEnabled) {
         const moved = Math.hypot(visual.x - previousX, visual.y - previousY);
-        if (moved > 0.7 && timeMs - visual.lastTrailAt >= 36) {
-          visual.lastTrailAt = timeMs;
+        const trailInterval = prefs.quality === "high" ? 36 : 64;
+        if (moved > 0.7 && realTimeMs - visual.lastTrailAt >= trailInterval) {
+          visual.lastTrailAt = realTimeMs;
           this.emitFx(
             "trail",
             previousX,
             previousY,
             avatarColor(this.presentations[player.id]),
-            timeMs,
+            realTimeMs,
             230
           );
         }
@@ -482,7 +494,7 @@ export class NeonWorldRenderer {
       const baseColor = avatarColor(presentation);
       const isSelf = player.id === this.selfId;
       const bodyColor = isSelf ? NEON.white : baseColor;
-      const pulse = 0.5 + Math.sin(timeMs / 240 + visual.x * 0.01) * 0.5;
+      const pulse = 0.5 + Math.sin(motionTimeMs / 240 + visual.x * 0.01) * 0.5;
       const size = 24;
 
       g.fillStyle(baseColor, 0.05 + pulse * 0.025);
