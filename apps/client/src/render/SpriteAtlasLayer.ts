@@ -12,9 +12,12 @@ import { getVisualPreferences } from "./visualSettings";
 import {
   PRODUCTION_ATLAS_KEY,
   coreFrame,
+  corePlacementFrame,
+  eliminationFrame,
   pickupFrame,
   playerFrame,
-  tileFrame
+  tileFrame,
+  type AvatarVariant
 } from "./spriteAtlas";
 
 const TILE = 48;
@@ -27,13 +30,20 @@ interface PlayerSpriteState {
   targetY: number;
   facing: Facing;
   movingUntilMs: number;
+  alive: boolean;
+  eliminatedAtMs: number | null;
 }
 
-const avatarTint = (presentation?: PlayerPresentation): number => {
+interface CoreSpriteState {
+  image: GameObjects.Image;
+  placedAtMs: number;
+}
+
+const avatarVariant = (presentation?: PlayerPresentation): AvatarVariant => {
   const token = presentation ? cosmeticById(presentation.loadout.avatar)?.visualToken : undefined;
-  if (token === "lime") return 0xe9ff70;
-  if (token === "ghost") return 0xa56bff;
-  return 0xffffff;
+  if (token === "lime") return "lime";
+  if (token === "ghost") return "ghost";
+  return "cyan";
 };
 
 const pickupKey = (pickup: SimPickup): string => `${pickup.x}:${pickup.y}:${pickup.kind}`;
@@ -48,7 +58,7 @@ export class SpriteAtlasLayer {
   private presentations: Record<string, PlayerPresentation> = {};
   private readonly tiles: GameObjects.Image[] = [];
   private readonly players = new Map<string, PlayerSpriteState>();
-  private readonly cores = new Map<string, GameObjects.Image>();
+  private readonly cores = new Map<string, CoreSpriteState>();
   private readonly pickups = new Map<string, GameObjects.Image>();
   private readonly selection: GameObjects.Graphics;
   private tileWidth = 0;
@@ -99,31 +109,57 @@ export class SpriteAtlasLayer {
     for (const player of state.players) {
       const visual = this.players.get(player.id);
       if (!visual) continue;
-      visual.image.setVisible(player.alive);
-      if (!player.alive) continue;
 
       visual.x += (visual.targetX - visual.x) * follow;
       visual.y += (visual.targetY - visual.y) * follow;
       visual.image.setPosition(visual.x, visual.y);
 
-      const moving = animated && timeMs < visual.movingUntilMs;
-      visual.image.setFrame(playerFrame(visual.facing, moving));
-      visual.image.setTint(avatarTint(this.presentations[player.id]));
+      const variant = avatarVariant(this.presentations[player.id]);
+      visual.image.setAlpha(variant === "ghost" ? 0.86 : 1);
 
-      if (player.id === this.selfId) {
-        this.selection.lineStyle(1, 0xffffff, 0.9);
-        this.selection.strokeRect(visual.x - 17, visual.y - 18, 34, 36);
-        this.selection.lineStyle(1, 0x53f3ff, 0.7);
-        this.selection.strokeCircle(visual.x, visual.y, 21);
+      if (player.alive) {
+        visual.image.setVisible(true);
+        const moving = timeMs < visual.movingUntilMs;
+        visual.image.setFrame(playerFrame(variant, visual.facing, moving, timeMs, animated));
+
+        if (player.id === this.selfId) {
+          this.selection.lineStyle(1, 0xffffff, 0.9);
+          this.selection.strokeRect(visual.x - 17, visual.y - 18, 34, 36);
+          this.selection.lineStyle(1, 0x53f3ff, 0.7);
+          this.selection.strokeCircle(visual.x, visual.y, 21);
+        }
+        continue;
       }
+
+      const eliminatedAtMs = visual.eliminatedAtMs;
+      if (eliminatedAtMs === null) {
+        visual.image.setVisible(false);
+        continue;
+      }
+
+      const elapsed = Math.max(0, timeMs - eliminatedAtMs);
+      const duration = animated ? 520 : 300;
+      if (elapsed >= duration) {
+        visual.image.setVisible(false);
+        continue;
+      }
+
+      visual.image.setVisible(true);
+      visual.image.setFrame(eliminationFrame(variant, elapsed, animated));
     }
 
     for (const core of state.cores) {
-      const image = this.cores.get(core.id);
-      if (!image) continue;
+      const visualState = this.cores.get(core.id);
+      if (!visualState) continue;
+      const age = Math.max(0, timeMs - visualState.placedAtMs);
+      if (animated && age < 240) {
+        visualState.image.setFrame(corePlacementFrame(age));
+        visualState.image.setScale(1);
+        continue;
+      }
       const visual = fuseVisual(core.fuseMs);
-      image.setFrame(coreFrame(visual.urgency, timeMs, animated));
-      image.setScale(1 + visual.urgency * 0.06);
+      visualState.image.setFrame(coreFrame(visual.urgency, timeMs, animated));
+      visualState.image.setScale(1 + visual.urgency * 0.06);
     }
 
     for (const pickup of state.pickups) {
@@ -184,8 +220,9 @@ export class SpriteAtlasLayer {
       const targetY = player.y * TILE + TILE / 2;
       const visual = this.players.get(player.id);
       if (!visual) {
+        const variant = avatarVariant(this.presentations[player.id]);
         const image = this.scene.add
-          .image(targetX, targetY, PRODUCTION_ATLAS_KEY, playerFrame("down", false))
+          .image(targetX, targetY, PRODUCTION_ATLAS_KEY, playerFrame(variant, "down", false, 0, false))
           .setDepth(2.3);
         this.players.set(player.id, {
           image,
@@ -194,25 +231,35 @@ export class SpriteAtlasLayer {
           targetX,
           targetY,
           facing: "down",
-          movingUntilMs: 0
+          movingUntilMs: 0,
+          alive: player.alive,
+          eliminatedAtMs: player.alive ? null : this.scene.time.now
         });
         continue;
       }
 
       if (visual.targetX !== targetX || visual.targetY !== targetY) {
         visual.facing = inferFacing(visual.targetX, visual.targetY, targetX, targetY, visual.facing);
-        visual.movingUntilMs = this.scene.time.now + 150;
+        visual.movingUntilMs = this.scene.time.now + 180;
         visual.targetX = targetX;
         visual.targetY = targetY;
       }
+
+      if (visual.alive && !player.alive) {
+        visual.eliminatedAtMs = this.scene.time.now;
+      } else if (!visual.alive && player.alive) {
+        visual.eliminatedAtMs = null;
+        visual.image.setVisible(true);
+      }
+      visual.alive = player.alive;
     }
   }
 
   private syncCores(state: GameState): void {
     const ids = new Set(state.cores.map((core) => core.id));
-    for (const [id, image] of this.cores) {
+    for (const [id, visual] of this.cores) {
       if (!ids.has(id)) {
-        image.destroy();
+        visual.image.destroy();
         this.cores.delete(id);
       }
     }
@@ -222,10 +269,13 @@ export class SpriteAtlasLayer {
     }
   }
 
-  private makeCore(core: SimCore): GameObjects.Image {
-    return this.scene.add
-      .image(core.x * TILE + TILE / 2, core.y * TILE + TILE / 2, PRODUCTION_ATLAS_KEY, "core-0")
-      .setDepth(2.1);
+  private makeCore(core: SimCore): CoreSpriteState {
+    return {
+      image: this.scene.add
+        .image(core.x * TILE + TILE / 2, core.y * TILE + TILE / 2, PRODUCTION_ATLAS_KEY, 96)
+        .setDepth(2.1),
+      placedAtMs: this.scene.time.now
+    };
   }
 
   private syncPickups(state: GameState): void {
@@ -265,7 +315,7 @@ export class SpriteAtlasLayer {
 
   private destroyDynamic(): void {
     for (const visual of this.players.values()) visual.image.destroy();
-    for (const image of this.cores.values()) image.destroy();
+    for (const visual of this.cores.values()) visual.image.destroy();
     for (const image of this.pickups.values()) image.destroy();
     this.players.clear();
     this.cores.clear();
