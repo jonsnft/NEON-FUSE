@@ -38,7 +38,7 @@ How should NEON FUSE expose creator-controlled tuning for Core fuse timing and m
    - Challenge-skill balance affects enjoyment, autonomy and player experience.
    - NEON FUSE interpretation: pacing variants should be treated as explicit play modes/hypotheses, not as an assertion that one universal timing is optimal.
 
-6. Papagiannakis et al. / IEEE Transactions on Games (2024), Simulation-Driven Balancing of Competitive Game Levels With Reinforcement Learning. DOI: 10.1109/TG.2024.3399536
+6. IEEE Transactions on Games (2024), Simulation-Driven Balancing of Competitive Game Levels With Reinforcement Learning. DOI: 10.1109/TG.2024.3399536
    - Competitive level balancing benefits from measurable objectives and repeated simulation rather than visual intuition alone.
    - NEON FUSE interpretation: before changing block density or spawn geometry, add deterministic metrics/tests that make those properties inspectable.
 
@@ -66,13 +66,26 @@ Decision: preserve 1800 ms as `standard` and introduce a clearly visible `tactic
 Starting range 1 and capacity 1 are common, readable baselines and already fit NEON FUSE's existing pickup progression. No change in this phase.
 
 ### Spawn safety
-Current official-map generation clears the spawn cell and cardinal adjacent cells. This supplies immediate movement choices and avoids a player beginning sealed behind a soft block. This phase adds tests/analysis around this invariant rather than changing it.
+Current official-map generation clears the spawn cell and cardinal adjacent cells. This supplies immediate movement choices and avoids a player beginning sealed behind a soft block.
+
+The new deterministic arena analysis records the current official-map baseline:
+- immediate floor egress per spawn: `[2, 2, 2, 2, 3, 3, 3, 3]` on all three maps;
+- minimum pairwise Manhattan spawn distance: at least 5 tiles.
+
+These values are now regression-tested. They are safety/reference baselines, not claims that every future map must use identical geometry.
 
 ### Soft-block density
-Density strongly affects navigation, line-of-sight, escape routes, pickup exposure and match tempo. The reviewed implementation reference around ~50% is useful context, not a target that should overwrite authored NEON FUSE maps. Density changes are deferred until an arena-analysis helper can report comparable metrics per official map.
+Density strongly affects navigation, line-of-sight, escape routes, pickup exposure and match tempo. The reviewed implementation reference around ~50% is useful context, not a target that should overwrite authored NEON FUSE maps.
+
+The new `analyzeArenaBalance()` helper records stable official-map baselines as soft tiles divided by floor+soft potential traversable space:
+- Grid Zero: 50 soft / 115 potential = ~43.48%;
+- Data Cross: 45 / 107 = ~42.06%;
+- Switchyard: 56 / 124 = ~45.16%.
+
+The test suite currently guards the authored reference band at 40–46%. This band is a regression envelope derived from the existing maps, not a literature-defined optimum.
 
 ### Pickup distribution
-A per-wall random drop chance is common in implementations, but NEON FUSE currently prioritizes deterministic simulation and reproducible maps. This phase keeps deterministic pickup placement and category allowlisting. Player-count scaling and density will be evaluated separately after metrics are available.
+A per-wall random drop chance is common in implementations, but NEON FUSE currently prioritizes deterministic simulation and reproducible maps. This phase keeps deterministic pickup placement and category allowlisting. Player-count scaling and pickup density remain a separate research/playtest decision.
 
 ### Match pressure
 The existing 240-second hard limit and 180-second Sudden Death are already bounded and deterministic. Tactical changes Core decision time only; it does not silently change match duration or Sudden Death timing.
@@ -91,14 +104,19 @@ The preset is:
 - copied into `GameState.rules` for reproducibility;
 - treated as a material configuration change, therefore clearing all Ready votes.
 
+Add deterministic `analyzeArenaBalance()` metrics for official maps:
+- hard/soft/floor tile counts;
+- potential traversable-space soft ratio;
+- immediate spawn floor egress;
+- minimum pairwise spawn Manhattan distance.
+
 ## Deferred hypotheses / required next metrics
-Before changing these parameters, measure and record per official map:
-1. eligible floor/soft/hard tile counts and soft-block ratio;
-2. spawn egress count and nearest blocking distance;
-3. pairwise spawn distances;
-4. pickup count by kind and pickup-per-player ratio;
-5. average time-to-first-open-route in deterministic simulation or recorded matches;
-6. elimination timing and percentage of rounds reaching Sudden Death.
+Before changing pickup density or more aggressive pacing parameters, measure and record:
+1. pickup count by kind and pickup-per-player ratio;
+2. average time-to-first-open-route in deterministic simulation or recorded matches;
+3. elimination timing and percentage of rounds reaching Sudden Death;
+4. Core placement frequency and chain-reaction rate by pace preset;
+5. win-rate / elimination-position distribution by spawn over a meaningful sample.
 
 ## Uncertainty
 No reviewed source establishes a universal optimal fuse, block density or pickup rate for NEON FUSE's exact input model, server tick, maps or audience. The exact `tactical = 2400 ms` value is therefore an explicit project hypothesis. It must remain easy to revise from Git history after playtest data exists.
