@@ -3,15 +3,28 @@ import { boot, type ColyseusTestServer } from "@colyseus/testing";
 import { PROTOCOL_VERSION, type MatchSnapshot } from "@neon-fuse/shared";
 import { server } from "../src/app.config";
 
+type TestClient = { waitForMessage(type: string): Promise<unknown> };
+
 async function waitForStatus(
-  client: { waitForMessage(type: string): Promise<unknown> },
+  client: TestClient,
   status: MatchSnapshot["status"]
 ): Promise<MatchSnapshot> {
-  for (let i = 0; i < 12; i++) {
+  for (let i = 0; i < 16; i++) {
     const snapshot = await client.waitForMessage("snapshot") as MatchSnapshot;
     if (snapshot.status === status) return snapshot;
   }
   throw new Error(`Did not receive match snapshot status: ${status}`);
+}
+
+async function waitForWaiting(
+  client: TestClient,
+  predicate: (snapshot: Extract<MatchSnapshot, { status: "waiting" }>) => boolean
+): Promise<Extract<MatchSnapshot, { status: "waiting" }>> {
+  for (let i = 0; i < 16; i++) {
+    const snapshot = await client.waitForMessage("snapshot") as MatchSnapshot;
+    if (snapshot.status === "waiting" && predicate(snapshot)) return snapshot;
+  }
+  throw new Error("Did not receive expected waiting snapshot");
 }
 
 describe("authoritative multiplayer runtime", () => {
@@ -52,23 +65,27 @@ describe("authoritative multiplayer runtime", () => {
       ready: true
     });
 
-    const allReadySnapshot = await waitForStatus(creator, "waiting");
-    expect(allReadySnapshot.status).toBe("waiting");
-    if (allReadySnapshot.status === "waiting") {
-      expect(allReadySnapshot.mapId).toBe("grid-zero");
-      expect(allReadySnapshot.creatorPlayerId).toBe(creator.sessionId);
-      expect(allReadySnapshot.readyPlayerIds).toEqual(
-        expect.arrayContaining([creator.sessionId, player2.sessionId])
-      );
-    }
+    const allReadySnapshot = await waitForWaiting(
+      creator,
+      (snapshot) =>
+        snapshot.readyPlayerIds.includes(creator.sessionId) &&
+        snapshot.readyPlayerIds.includes(player2.sessionId)
+    );
+
+    expect(allReadySnapshot.mapId).toBe("grid-zero");
+    expect(allReadySnapshot.creatorPlayerId).toBe(creator.sessionId);
+    expect(allReadySnapshot.readyPlayerIds).toHaveLength(2);
 
     player2.send("intent", {
       type: "match.start",
       version: PROTOCOL_VERSION
     });
 
-    const rejectedStartSnapshot = await waitForStatus(creator, "waiting");
-    expect(rejectedStartSnapshot.status).toBe("waiting");
+    const rejectedStartSnapshot = await waitForWaiting(
+      creator,
+      (snapshot) => snapshot.readyPlayerIds.length === 2
+    );
+    expect(rejectedStartSnapshot.creatorPlayerId).toBe(creator.sessionId);
 
     creator.send("intent", {
       type: "match.start",
