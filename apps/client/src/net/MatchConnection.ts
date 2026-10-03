@@ -1,14 +1,23 @@
 import type { Room } from "@colyseus/sdk";
-import type { ClientIntent, MatchSnapshot, OfficialMapId } from "@neon-fuse/shared";
+import {
+  PROTOCOL_VERSION,
+  type ChatMessage,
+  type ChatSend,
+  type ClientIntent,
+  type MatchSnapshot,
+  type OfficialMapId
+} from "@neon-fuse/shared";
 import { networkClient } from "./NetworkSession";
 
 type SnapshotHandler = (snapshot: MatchSnapshot) => void;
 type StatusHandler = (status: string) => void;
+type ChatHandler = (message: ChatMessage) => void;
 
 export class MatchConnection {
   private room: Room | null = null;
   private snapshotHandler: SnapshotHandler | null = null;
   private statusHandler: StatusHandler | null = null;
+  private chatHandler: ChatHandler | null = null;
   private reconnecting = false;
   private manualLeave = false;
 
@@ -19,11 +28,13 @@ export class MatchConnection {
   async connect(
     onSnapshot: SnapshotHandler,
     onStatus: StatusHandler,
+    onChat: ChatHandler,
     roomId?: string,
     mapId: OfficialMapId = "grid-zero"
   ): Promise<void> {
     this.snapshotHandler = onSnapshot;
     this.statusHandler = onStatus;
+    this.chatHandler = onChat;
     this.manualLeave = false;
     onStatus("CONNECTING");
 
@@ -39,6 +50,15 @@ export class MatchConnection {
     this.room?.send("intent", intent);
   }
 
+  sendChat(text: string): void {
+    const payload: ChatSend = {
+      type: "chat.send",
+      version: PROTOCOL_VERSION,
+      text
+    };
+    this.room?.send("chat.send", payload);
+  }
+
   async disconnect(): Promise<void> {
     this.manualLeave = true;
     this.reconnecting = false;
@@ -51,6 +71,7 @@ export class MatchConnection {
     } finally {
       this.snapshotHandler = null;
       this.statusHandler = null;
+      this.chatHandler = null;
     }
   }
 
@@ -60,6 +81,10 @@ export class MatchConnection {
 
     room.onMessage("snapshot", (snapshot: MatchSnapshot) => {
       this.snapshotHandler?.(snapshot);
+    });
+
+    room.onMessage("chat.message", (message: ChatMessage) => {
+      this.chatHandler?.(message);
     });
 
     room.onError((code, message) => {

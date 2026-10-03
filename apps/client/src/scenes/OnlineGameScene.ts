@@ -12,6 +12,7 @@ import {
 import { MatchConnection } from "../net/MatchConnection";
 import { renderWorld } from "../render/renderWorld";
 import { Sfx } from "../audio/Sfx";
+import { LobbyChat } from "../ui/LobbyChat";
 
 interface OnlineSceneData {
   roomId?: string;
@@ -25,6 +26,7 @@ export class OnlineGameScene extends Scene {
   private graphics!: GameObjects.Graphics;
   private status!: GameObjects.Text;
   private help!: GameObjects.Text;
+  private chat!: LobbyChat;
   private keys!: Record<string, Input.Keyboard.Key>;
   private nextMoveAt = 0;
   private seq = 0;
@@ -74,7 +76,14 @@ export class OnlineGameScene extends Scene {
       lobby: Input.Keyboard.KeyCodes.ESC
     }) as Record<string, Input.Keyboard.Key>;
 
+    this.chat = new LobbyChat(
+      this,
+      (text) => this.connection.sendChat(text),
+      () => this.connection.playerId
+    );
+
     this.events.once("shutdown", () => {
+      this.chat.destroy();
       void this.connection.disconnect();
     });
 
@@ -84,6 +93,7 @@ export class OnlineGameScene extends Scene {
         this.connectionStatus = networkStatus;
         this.renderStatus();
       },
+      (message) => this.chat.receive(message),
       this.roomId,
       this.mapId
     ).catch((error: unknown) => {
@@ -93,6 +103,8 @@ export class OnlineGameScene extends Scene {
   }
 
   update(time: number): void {
+    if (this.chat.isTyping) return;
+
     if (Input.Keyboard.JustDown(this.keys.lobby)) {
       this.scene.start("lobby");
       return;
@@ -167,10 +179,12 @@ export class OnlineGameScene extends Scene {
     if (snapshot.status === "waiting") {
       this.state = null;
       this.graphics.clear();
+      this.chat.setEnabled(true);
       this.renderStatus();
       return;
     }
 
+    this.chat.setEnabled(false);
     this.playSnapshotCues(snapshot.game, snapshot.status);
     this.state = snapshot.game;
     renderWorld(this.graphics, this.state, this.connection.playerId ?? undefined, snapshot.presentations);
@@ -233,13 +247,13 @@ export class OnlineGameScene extends Scene {
       );
 
       if (isCreator && allReady) {
-        this.help.setText("ENTER = START // R = UNREADY // ESC = LOBBY");
+        this.help.setText("ENTER = START // R = UNREADY // T = CHAT // ESC = LOBBY");
       } else if (isCreator) {
-        this.help.setText(ready ? "WAITING FOR ALL PLAYERS // R = UNREADY // ESC = LOBBY" : "R = READY // ESC = LOBBY");
+        this.help.setText(ready ? "WAITING FOR ALL PLAYERS // R = UNREADY // T = CHAT // ESC = LOBBY" : "R = READY // T = CHAT // ESC = LOBBY");
       } else if (allReady) {
-        this.help.setText("ALL READY // WAITING FOR CREATOR // ESC = LOBBY");
+        this.help.setText("ALL READY // WAITING FOR CREATOR // T = CHAT // ESC = LOBBY");
       } else {
-        this.help.setText(ready ? "R = UNREADY // ESC = LOBBY" : "R = READY // ESC = LOBBY");
+        this.help.setText(ready ? "R = UNREADY // T = CHAT // ESC = LOBBY" : "R = READY // T = CHAT // ESC = LOBBY");
       }
       return;
     }
