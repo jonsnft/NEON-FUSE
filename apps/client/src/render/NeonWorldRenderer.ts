@@ -8,12 +8,34 @@ import {
 import { MOTION, NEON } from "./neonTheme";
 
 export const TILE = 48;
+const MAX_TRANSIENT_FX = 180;
+const CAMERA_SHAKE_COOLDOWN_MS = 180;
 
 interface VisualPlayer {
   x: number;
   y: number;
   targetX: number;
   targetY: number;
+  lastTrailAt: number;
+}
+
+type FxKind = "trail" | "core" | "blast" | "block" | "pickup";
+
+interface TransientFx {
+  kind: FxKind;
+  x: number;
+  y: number;
+  color: number;
+  startedAt: number;
+  durationMs: number;
+  seed: number;
+}
+
+interface PresentationBaseline {
+  cores: Set<string>;
+  blasts: Set<string>;
+  pickups: Map<string, { x: number; y: number; kind: string }>;
+  tiles: GameState["tiles"];
 }
 
 const avatarColor = (presentation?: PlayerPresentation): number => {
@@ -26,12 +48,24 @@ const avatarColor = (presentation?: PlayerPresentation): number => {
 const coreToken = (presentation?: PlayerPresentation): string | undefined =>
   presentation ? cosmeticById(presentation.loadout.core)?.visualToken : undefined;
 
+const cellKey = (x: number, y: number): string => `${x}:${y}`;
+const coreKey = (ownerId: string, x: number, y: number): string => `${ownerId}:${x}:${y}`;
+
+const seededUnit = (seed: number): number => {
+  const value = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
+  return value - Math.floor(value);
+};
+
 export class NeonWorldRenderer {
   private readonly graphics: GameObjects.Graphics;
   private state: GameState | null = null;
   private selfId?: string;
   private presentations: Record<string, PlayerPresentation> = {};
   private readonly players = new Map<string, VisualPlayer>();
+  private readonly transientFx: TransientFx[] = [];
+  private baseline: PresentationBaseline | null = null;
+  private nextSeed = 1;
+  private lastCameraShakeAt = -Infinity;
 
   constructor(private readonly scene: Scene) {
     this.graphics = scene.add.graphics();
@@ -42,9 +76,13 @@ export class NeonWorldRenderer {
     selfId?: string,
     presentations: Record<string, PlayerPresentation> = {}
   ): void {
+    const now = this.scene.time.now;
+    if (this.baseline) this.deriveSnapshotFx(this.baseline, state, now);
+
     this.state = state;
     this.selfId = selfId;
     this.presentations = presentations;
+    this.baseline = this.captureBaseline(state);
 
     const presentIds = new Set(state.players.map((player) => player.id));
     for (const id of this.players.keys()) {
@@ -63,7 +101,8 @@ export class NeonWorldRenderer {
           x: targetX,
           y: targetY,
           targetX,
-          targetY
+          targetY,
+          lastTrailAt: now
         });
       }
     }
@@ -72,12 +111,16 @@ export class NeonWorldRenderer {
   clearState(): void {
     this.state = null;
     this.players.clear();
+    this.transientFx.length = 0;
+    this.baseline = null;
   }
 
   destroy(): void {
     this.graphics.destroy();
     this.players.clear();
+    this.transientFx.length = 0;
     this.state = null;
+    this.baseline = null;
   }
 
   render(timeMs: number, deltaMs: number): void {
@@ -88,11 +131,187 @@ export class NeonWorldRenderer {
     const state = this.state;
     if (!state) return;
 
+    this.pruneFx(timeMs);
     this.drawArena(g, state, timeMs);
+    this.drawTransientFx(g, timeMs, "block");
     this.drawPickups(g, state, timeMs);
+    this.drawTransientFx(g, timeMs, "pickup");
     this.drawCores(g, state, timeMs);
+    this.drawTransientFx(g, timeMs, "core");
     this.drawBlasts(g, state, timeMs);
+    this.drawTransientFx(g, timeMs, "blast");
     this.drawPlayers(g, state, deltaMs, timeMs);
+    this.drawTransientFx(g, timeMs, "trail");
+  }
+
+  private captureBaseline(state: GameState): PresentationBaseline {
+    return {
+      cores: new Set(state.cores.map((core) => coreKey(core.ownerId, core.x, core.y))),
+      blasts: new Set(state.blasts.map((blast) => cellKey(blast.x, blast.y))),
+      pickups: new Map(
+        state.pickups
+          .filter((pickup) => pickup.revealed)
+          .map((pickup) => [cellKey(pickup.x, pickup.y), { x: pickup.x, y: pickup.y, kind: pickup.kind }])
+      ),
+      tiles: [...state.tiles]
+    };
+  }
+
+  private deriveSnapshotFx(previous: PresentationBaseline, state: GameState, now: number): void {
+    const nextCoreKeys = new Set(state.cores.map((core) => coreKey(core.ownerId, core.x, core.y)));
+    for (const core of state.cores) {
+      if (!previous.cores.has(coreKey(core.ownerId, core.x, core.y))) {
+        this.emitFx("core", core.x * TILE + TILE / 2, core.y * TILE + TILE / 2, NEON.magenta, now, 360);
+      }
+    }
+
+    let newBlastCells = 0;
+    for (const blast of state.blasts) {
+      const key = cellKey(blast.x, blast.y);
+      if (!previous.blasts.has(key)) {
+        newBlastCells += 1;
+        this.emitFx("blast", blast.x * TILE + TILE / 2, blast.y * TILE + TILE / 2, NEON.cyan, now, 300);
+      }
+    }
+
+    if (newBlastCells > 0 && now - this.lastCameraShakeAt >= CAMERA_SHAKE_COOLDOWN_MS) {
+      this.lastCameraShakeAt = now;
+      this.scene.cameras.main.shake(85, Math.min(0.0032, 0.0015 + newBlastCells * 0.00022));
+    }
+
+    const maxTiles = Math.min(previous.tiles.length, state.tiles.length);
+    for (let i = 0; i < maxTiles; i++) {
+      if (previous.tiles[i] === "soft" && state.tiles[i] === "floor") {
+        const x = i % state.width;
+        const y = Math.floor(i / state.width);
+        this.emitFx("block", x * TILE + TILE / 2, y * TILE + TILE / 2, NEON.magenta, now, 440);
+      }
+    }
+
+    const nextPickupKeys = new Set(
+      state.pickups.filter((pickup) => pickup.revealed).map((pickup) => cellKey(pickup.x, pickup.y))
+    );
+    for (const [key, pickup] of previous.pickups) {
+      if (nextPickupKeys.has(key)) continue;
+      const occupiedByPlayer = state.players.some(
+        (player) => player.alive && player.x === pickup.x && player.y === pickup.y
+      );
+      if (!occupiedByPlayer) continue;
+      const color = pickup.kind === "range"
+        ? NEON.magenta
+        : pickup.kind === "capacity"
+          ? NEON.cyan
+          : NEON.amber;
+      this.emitFx("pickup", pickup.x * TILE + TILE / 2, pickup.y * TILE + TILE / 2, color, now, 420);
+    }
+
+    void nextCoreKeys;
+  }
+
+  private emitFx(
+    kind: FxKind,
+    x: number,
+    y: number,
+    color: number,
+    startedAt: number,
+    durationMs: number
+  ): void {
+    this.transientFx.push({
+      kind,
+      x,
+      y,
+      color,
+      startedAt,
+      durationMs,
+      seed: this.nextSeed++
+    });
+    if (this.transientFx.length > MAX_TRANSIENT_FX) {
+      this.transientFx.splice(0, this.transientFx.length - MAX_TRANSIENT_FX);
+    }
+  }
+
+  private pruneFx(timeMs: number): void {
+    let write = 0;
+    for (let read = 0; read < this.transientFx.length; read++) {
+      const fx = this.transientFx[read];
+      if (timeMs - fx.startedAt <= fx.durationMs) {
+        this.transientFx[write++] = fx;
+      }
+    }
+    this.transientFx.length = write;
+  }
+
+  private drawTransientFx(g: GameObjects.Graphics, timeMs: number, kind: FxKind): void {
+    for (const fx of this.transientFx) {
+      if (fx.kind !== kind) continue;
+      const progress = Math.max(0, Math.min(1, (timeMs - fx.startedAt) / fx.durationMs));
+      const life = 1 - progress;
+
+      if (kind === "trail") {
+        g.fillStyle(fx.color, 0.13 * life);
+        g.fillCircle(fx.x, fx.y, 7 + progress * 7);
+        g.lineStyle(1, fx.color, 0.32 * life);
+        g.strokeCircle(fx.x, fx.y, 4 + progress * 10);
+        continue;
+      }
+
+      if (kind === "core") {
+        g.lineStyle(3, fx.color, 0.8 * life);
+        g.strokeCircle(fx.x, fx.y, 8 + progress * 30);
+        g.lineStyle(1, NEON.white, 0.65 * life);
+        g.strokeCircle(fx.x, fx.y, 3 + progress * 18);
+        this.drawRadialSparks(g, fx, progress, life, 6, 8, 25);
+        continue;
+      }
+
+      if (kind === "blast") {
+        g.fillStyle(NEON.white, 0.14 * life);
+        g.fillCircle(fx.x, fx.y, 10 + progress * 20);
+        this.drawRadialSparks(g, fx, progress, life, 8, 7, 34);
+        continue;
+      }
+
+      if (kind === "block") {
+        for (let i = 0; i < 7; i++) {
+          const angle = seededUnit(fx.seed * 13 + i) * Math.PI * 2;
+          const radius = 6 + progress * (14 + seededUnit(fx.seed * 19 + i) * 18);
+          const size = 5 * life + 1;
+          const x = fx.x + Math.cos(angle) * radius;
+          const y = fx.y + Math.sin(angle) * radius + progress * progress * 8;
+          g.fillStyle(i % 2 === 0 ? fx.color : NEON.cyan, 0.48 * life);
+          g.fillRect(x - size / 2, y - size / 2, size, size);
+        }
+        continue;
+      }
+
+      if (kind === "pickup") {
+        g.lineStyle(2, fx.color, 0.75 * life);
+        g.strokeCircle(fx.x, fx.y, 5 + progress * 25);
+        g.lineStyle(1, NEON.white, 0.58 * life);
+        g.strokeCircle(fx.x, fx.y, 3 + progress * 14);
+        this.drawRadialSparks(g, fx, progress, life, 5, 5, 22);
+      }
+    }
+  }
+
+  private drawRadialSparks(
+    g: GameObjects.Graphics,
+    fx: TransientFx,
+    progress: number,
+    life: number,
+    count: number,
+    minRadius: number,
+    travel: number
+  ): void {
+    for (let i = 0; i < count; i++) {
+      const angle = seededUnit(fx.seed * 31 + i) * Math.PI * 2;
+      const radius = minRadius + progress * (travel * (0.7 + seededUnit(fx.seed * 43 + i) * 0.5));
+      const x = fx.x + Math.cos(angle) * radius;
+      const y = fx.y + Math.sin(angle) * radius;
+      const r = 1.2 + seededUnit(fx.seed * 59 + i) * 1.8;
+      g.fillStyle(i % 3 === 0 ? NEON.white : fx.color, 0.72 * life);
+      g.fillCircle(x, y, r);
+    }
   }
 
   private drawBackdrop(g: GameObjects.Graphics, timeMs: number): void {
@@ -237,8 +456,25 @@ export class NeonWorldRenderer {
 
       visual.targetX = player.x * TILE + TILE / 2;
       visual.targetY = player.y * TILE + TILE / 2;
+      const previousX = visual.x;
+      const previousY = visual.y;
       visual.x += (visual.targetX - visual.x) * follow;
       visual.y += (visual.targetY - visual.y) * follow;
+
+      if (player.alive) {
+        const moved = Math.hypot(visual.x - previousX, visual.y - previousY);
+        if (moved > 0.7 && timeMs - visual.lastTrailAt >= 36) {
+          visual.lastTrailAt = timeMs;
+          this.emitFx(
+            "trail",
+            previousX,
+            previousY,
+            avatarColor(this.presentations[player.id]),
+            timeMs,
+            230
+          );
+        }
+      }
 
       if (!player.alive) continue;
 
