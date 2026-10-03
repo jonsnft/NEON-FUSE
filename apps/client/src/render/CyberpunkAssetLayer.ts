@@ -5,7 +5,9 @@ import {
   type GameState,
   type PlayerPresentation
 } from "@neon-fuse/shared";
+import { fuseVisual, inferFacing, stableAnimationSeed, type Facing } from "./animatedPresentation";
 import { NEON } from "./neonTheme";
+import { getVisualPreferences } from "./visualSettings";
 
 const TILE = 48;
 
@@ -14,6 +16,9 @@ interface VisualPlayer {
   y: number;
   targetX: number;
   targetY: number;
+  facing: Facing;
+  moving: boolean;
+  seed: number;
 }
 
 interface MaterialTheme {
@@ -68,7 +73,7 @@ export class CyberpunkAssetLayer {
   private presentations: Record<string, PlayerPresentation> = {};
   private readonly players = new Map<string, VisualPlayer>();
 
-  constructor(private readonly scene: Scene) {
+  constructor(scene: Scene) {
     this.graphics = scene.add.graphics().setDepth(1).setAlpha(0.88);
   }
 
@@ -91,6 +96,16 @@ export class CyberpunkAssetLayer {
       const targetY = player.y * TILE + TILE / 2;
       const visual = this.players.get(player.id);
       if (visual) {
+        if (targetX !== visual.targetX || targetY !== visual.targetY) {
+          visual.facing = inferFacing(
+            visual.targetX,
+            visual.targetY,
+            targetX,
+            targetY,
+            visual.facing
+          );
+          visual.moving = true;
+        }
         visual.targetX = targetX;
         visual.targetY = targetY;
       } else {
@@ -98,7 +113,10 @@ export class CyberpunkAssetLayer {
           x: targetX,
           y: targetY,
           targetX,
-          targetY
+          targetY,
+          facing: "down",
+          moving: false,
+          seed: stableAnimationSeed(player.id)
         });
       }
     }
@@ -122,11 +140,35 @@ export class CyberpunkAssetLayer {
     g.clear();
     if (!state) return;
 
+    const preferences = getVisualPreferences();
+    const ambientTimeMs = preferences.ambientMotionEnabled ? timeMs : 0;
     const theme = themeFor(state.mapId);
-    this.drawTiles(g, state, theme, timeMs);
-    this.drawPickups(g, state, theme, timeMs);
-    this.drawCores(g, state, theme, timeMs);
-    this.drawPlayers(g, state, theme, deltaMs, timeMs);
+    this.drawTiles(g, state, theme, ambientTimeMs);
+    this.drawPickups(
+      g,
+      state,
+      theme,
+      ambientTimeMs,
+      preferences.ambientMotionEnabled,
+      preferences.quality !== "low"
+    );
+    this.drawCores(
+      g,
+      state,
+      theme,
+      timeMs,
+      preferences.ambientMotionEnabled,
+      preferences.quality !== "low"
+    );
+    this.drawPlayers(
+      g,
+      state,
+      theme,
+      deltaMs,
+      ambientTimeMs,
+      preferences.ambientMotionEnabled,
+      preferences.quality !== "low"
+    );
   }
 
   private drawTiles(
@@ -273,13 +315,17 @@ export class CyberpunkAssetLayer {
     g: GameObjects.Graphics,
     state: GameState,
     theme: MaterialTheme,
-    timeMs: number
+    timeMs: number,
+    animate: boolean,
+    detailed: boolean
   ): void {
     for (const pickup of state.pickups) {
       if (!pickup.revealed) continue;
       const cx = pickup.x * TILE + TILE / 2;
       const cy = pickup.y * TILE + TILE / 2;
-      const pulse = 1 + Math.sin(timeMs / 190 + pickup.x + pickup.y) * 0.08;
+      const seed = pickup.x * 0.61 + pickup.y * 0.37;
+      const phase = animate ? Math.sin(timeMs / 190 + seed) : 0;
+      const pulse = 1 + phase * 0.08;
       const color = pickup.kind === "range"
         ? 0xff4fd8
         : pickup.kind === "capacity"
@@ -291,22 +337,31 @@ export class CyberpunkAssetLayer {
       g.lineStyle(2, color, 0.88);
       g.strokeCircle(cx, cy, 10 * pulse);
 
+      if (detailed) {
+        const scanAngle = animate ? timeMs / 360 + seed : seed;
+        g.fillStyle(color, 0.8);
+        g.fillCircle(cx + Math.cos(scanAngle) * 13, cy + Math.sin(scanAngle) * 13, 1.5);
+      }
+
       if (pickup.kind === "range") {
+        const arm = 7 + phase * 1.5;
         g.lineStyle(2, color, 0.95);
-        g.lineBetween(cx - 7, cy, cx + 7, cy);
-        g.lineBetween(cx, cy - 7, cx, cy + 7);
+        g.lineBetween(cx - arm, cy, cx + arm, cy);
+        g.lineBetween(cx, cy - arm, cx, cy + arm);
         g.fillStyle(theme.accent, 0.9);
         g.fillCircle(cx, cy, 2.5);
       } else if (pickup.kind === "capacity") {
+        const inset = 6 + phase;
         g.lineStyle(2, color, 0.95);
-        g.strokeRect(cx - 6, cy - 6, 12, 12);
+        g.strokeRect(cx - inset, cy - inset, inset * 2, inset * 2);
         g.fillStyle(theme.accent, 0.88);
         g.fillRect(cx - 2, cy - 2, 4, 4);
       } else {
+        const lift = phase * 1.5;
         g.lineStyle(2, color, 0.95);
-        g.lineBetween(cx - 7, cy + 5, cx, cy - 7);
-        g.lineBetween(cx, cy - 7, cx + 7, cy + 5);
-        g.lineBetween(cx - 7, cy + 5, cx + 7, cy + 5);
+        g.lineBetween(cx - 7, cy + 5 + lift, cx, cy - 7 + lift);
+        g.lineBetween(cx, cy - 7 + lift, cx + 7, cy + 5 + lift);
+        g.lineBetween(cx - 7, cy + 5 + lift, cx + 7, cy + 5 + lift);
       }
     }
   }
@@ -315,25 +370,43 @@ export class CyberpunkAssetLayer {
     g: GameObjects.Graphics,
     state: GameState,
     theme: MaterialTheme,
-    timeMs: number
+    timeMs: number,
+    animate: boolean,
+    detailed: boolean
   ): void {
     for (const core of state.cores) {
       const cx = core.x * TILE + TILE / 2;
       const cy = core.y * TILE + TILE / 2;
-      const pulse = 0.5 + Math.sin(timeMs / 120 + core.x * 0.6 + core.y) * 0.5;
+      const fuse = fuseVisual(core.fuseMs);
+      const pulsePhase = animate
+        ? 0.5 + Math.sin(timeMs / fuse.pulseMs + stableAnimationSeed(core.id) * Math.PI * 2) * 0.5
+        : 0.5;
+      const pulse = pulsePhase * (1 + fuse.urgency * 0.5);
+
       g.fillStyle(0x04060a, 0.94);
       g.fillCircle(cx, cy, 13);
-      g.lineStyle(3, NEON.magenta, 0.82);
-      g.strokeCircle(cx, cy, 12 + pulse * 2);
+      g.lineStyle(3, NEON.magenta, 0.7 + fuse.urgency * 0.25);
+      g.strokeCircle(cx, cy, fuse.ringRadius + pulse * 1.5);
       g.lineStyle(1, theme.accent, 0.84);
-      g.strokeCircle(cx, cy, 7);
-      g.fillStyle(NEON.white, 0.94);
+      g.strokeCircle(cx, cy, 7 + fuse.urgency);
+      g.fillStyle(NEON.white, 0.9 + pulsePhase * 0.08);
       g.fillCircle(cx, cy, 3.5 + pulse);
-      g.lineStyle(1, theme.primary, 0.52);
-      g.lineBetween(cx - 9, cy, cx - 5, cy);
-      g.lineBetween(cx + 5, cy, cx + 9, cy);
-      g.lineBetween(cx, cy - 9, cx, cy - 5);
-      g.lineBetween(cx, cy + 5, cx, cy + 9);
+
+      g.lineStyle(1, theme.primary, 0.52 + fuse.urgency * 0.32);
+      g.lineBetween(cx - 10, cy, cx - 5, cy);
+      g.lineBetween(cx + 5, cy, cx + 10, cy);
+      g.lineBetween(cx, cy - 10, cx, cy - 5);
+      g.lineBetween(cx, cy + 5, cx, cy + 10);
+
+      if (detailed) {
+        const markerDistance = 17 + fuse.urgency * 2;
+        const markerSize = 1.5 + fuse.urgency;
+        g.fillStyle(NEON.magenta, 0.55 + fuse.urgency * 0.4);
+        g.fillRect(cx - markerSize, cy - markerDistance - markerSize, markerSize * 2, markerSize * 2);
+        g.fillRect(cx - markerSize, cy + markerDistance - markerSize, markerSize * 2, markerSize * 2);
+        g.fillRect(cx - markerDistance - markerSize, cy - markerSize, markerSize * 2, markerSize * 2);
+        g.fillRect(cx + markerDistance - markerSize, cy - markerSize, markerSize * 2, markerSize * 2);
+      }
     }
   }
 
@@ -342,7 +415,9 @@ export class CyberpunkAssetLayer {
     state: GameState,
     theme: MaterialTheme,
     deltaMs: number,
-    timeMs: number
+    timeMs: number,
+    animate: boolean,
+    detailed: boolean
   ): void {
     const follow = 1 - Math.exp(-Math.max(0, deltaMs) / 70);
 
@@ -355,45 +430,105 @@ export class CyberpunkAssetLayer {
       visual.x += (visual.targetX - visual.x) * follow;
       visual.y += (visual.targetY - visual.y) * follow;
 
+      const distance = Math.hypot(visual.targetX - visual.x, visual.targetY - visual.y);
+      if (distance < 0.6) visual.moving = false;
+
       const color = avatarColor(this.presentations[player.id]);
       const isSelf = player.id === this.selfId;
-      const pulse = 0.5 + Math.sin(timeMs / 210 + visual.x * 0.02) * 0.5;
+      const phaseOffset = visual.seed * Math.PI * 2;
+      const idlePhase = animate ? Math.sin(timeMs / 460 + phaseOffset) : 0;
+      const stepPhase = animate && visual.moving ? Math.sin(timeMs / 85 + phaseOffset) : 0;
+      const bob = visual.moving ? Math.abs(stepPhase) * 1.4 : idlePhase * 0.7;
       const x = visual.x;
-      const y = visual.y;
+      const y = visual.y - bob;
 
-      g.fillStyle(0x02060a, 0.92);
-      g.fillRect(x - 13, y - 15, 26, 30);
-      g.fillStyle(color, 0.78);
-      g.fillRect(x - 10, y - 12, 20, 24);
-      g.fillStyle(0x0b1118, 0.94);
-      g.fillRect(x - 7, y - 8, 14, 11);
-      g.fillStyle(color, 0.22 + pulse * 0.15);
-      g.fillRect(x - 16, y - 18, 32, 36);
+      this.drawPlayerChassis(g, x, y, visual.facing, color, theme, stepPhase, idlePhase, detailed);
 
-      g.lineStyle(2, color, 0.96);
-      g.lineBetween(x - 9, y - 10, x - 13, y - 4);
-      g.lineBetween(x + 9, y - 10, x + 13, y - 4);
-      g.lineBetween(x - 9, y + 10, x - 12, y + 15);
-      g.lineBetween(x + 9, y + 10, x + 12, y + 15);
-
-      g.fillStyle(NEON.white, 0.96);
-      g.fillRect(x - 6, y - 6, 12, 3);
-      g.fillStyle(theme.primary, 0.9);
-      g.fillRect(x - 4, y + 5, 8, 5);
-      g.fillStyle(NEON.white, 0.88);
-      g.fillCircle(x, y + 7.5, 2.1);
-
+      const selectionPulse = animate ? 0.5 + Math.sin(timeMs / 210 + phaseOffset) * 0.5 : 0.5;
       if (isSelf) {
         g.lineStyle(2, NEON.white, 0.92);
         g.strokeRect(x - 16, y - 18, 32, 36);
         g.lineStyle(1, theme.primary, 0.86);
-        g.strokeCircle(x, y, 22 + pulse * 2);
+        g.strokeCircle(x, y, 22 + selectionPulse * 2);
       }
 
       const token = cosmeticById(this.presentations[player.id]?.loadout.avatar ?? "")?.visualToken;
       if (token === "ghost") {
         g.lineStyle(1, NEON.violet, 0.65);
         g.strokeRect(x - 18, y - 20, 36, 40);
+      }
+    }
+  }
+
+  private drawPlayerChassis(
+    g: GameObjects.Graphics,
+    x: number,
+    y: number,
+    facing: Facing,
+    color: number,
+    theme: MaterialTheme,
+    stepPhase: number,
+    idlePhase: number,
+    detailed: boolean
+  ): void {
+    const sideways = facing === "left" || facing === "right";
+    const bodyHalfWidth = sideways ? 11 : 13;
+    const legStride = stepPhase * 3.2;
+
+    g.fillStyle(color, 0.16 + Math.abs(idlePhase) * 0.06);
+    g.fillRect(x - bodyHalfWidth - 3, y - 18, bodyHalfWidth * 2 + 6, 36);
+    g.fillStyle(0x02060a, 0.94);
+    g.fillRect(x - bodyHalfWidth, y - 15, bodyHalfWidth * 2, 29);
+    g.fillStyle(color, 0.78);
+    g.fillRect(x - bodyHalfWidth + 3, y - 12, bodyHalfWidth * 2 - 6, 22);
+    g.fillStyle(0x0b1118, 0.96);
+    g.fillRect(x - bodyHalfWidth + 6, y - 9, bodyHalfWidth * 2 - 12, 12);
+
+    g.lineStyle(2, color, 0.96);
+    if (sideways) {
+      const direction = facing === "right" ? 1 : -1;
+      g.lineBetween(x - direction * 7, y - 9, x - direction * 12, y - 3);
+      g.lineBetween(x + direction * 8, y - 8, x + direction * 14, y - 5);
+      g.lineBetween(x - 5, y + 10, x - 7 - legStride, y + 16);
+      g.lineBetween(x + 5, y + 10, x + 7 + legStride, y + 16);
+
+      g.fillStyle(NEON.white, 0.96);
+      const visorX = facing === "right" ? x + 4 : x - 7;
+      g.fillRect(visorX, y - 7, 3, 10);
+      g.fillStyle(theme.primary, 0.9);
+      g.fillRect(x + direction * 2 - 3, y + 5, 6, 5);
+      g.fillStyle(NEON.white, 0.88);
+      g.fillCircle(x + direction * 2, y + 7.5, 2);
+    } else {
+      g.lineBetween(x - 9, y - 10, x - 13, y - 4);
+      g.lineBetween(x + 9, y - 10, x + 13, y - 4);
+      g.lineBetween(x - 7, y + 10, x - 10 - legStride, y + 16);
+      g.lineBetween(x + 7, y + 10, x + 10 + legStride, y + 16);
+
+      if (facing === "down") {
+        g.fillStyle(NEON.white, 0.96);
+        g.fillRect(x - 6, y - 6, 12, 3);
+        g.fillStyle(theme.primary, 0.9);
+        g.fillRect(x - 4, y + 5, 8, 5);
+        g.fillStyle(NEON.white, 0.88);
+        g.fillCircle(x, y + 7.5, 2.1);
+      } else {
+        g.lineStyle(2, theme.primary, 0.88);
+        g.lineBetween(x - 6, y - 6, x + 6, y - 6);
+        g.fillStyle(theme.secondary, 0.92);
+        g.fillRect(x - 5, y + 4, 10, 6);
+        g.fillStyle(color, 0.9);
+        g.fillRect(x - 2, y - 12, 4, 4);
+      }
+    }
+
+    if (detailed) {
+      g.lineStyle(1, theme.accent, 0.5);
+      if (sideways) {
+        g.lineBetween(x, y - 13, x, y + 10);
+      } else {
+        g.lineBetween(x - 8, y, x - 4, y);
+        g.lineBetween(x + 4, y, x + 8, y);
       }
     }
   }
