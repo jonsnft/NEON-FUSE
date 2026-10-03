@@ -1,4 +1,5 @@
 import type { Direction } from "../types/game";
+import { coreFuseMsForRules } from "../rules/catalog";
 import type { GameState } from "./types";
 import { playerById, tileAt } from "./types";
 
@@ -36,7 +37,11 @@ export function movePlayer(state: GameState, playerId: string, direction: Direct
   return true;
 }
 
-export function placeCore(state: GameState, playerId: string, fuseMs = 1800): boolean {
+export function placeCore(
+  state: GameState,
+  playerId: string,
+  fuseMs = coreFuseMsForRules(state.rules)
+): boolean {
   if (state.phase !== "playing") return false;
   const player = playerById(state, playerId);
   if (!player?.alive) return false;
