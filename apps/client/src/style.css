@@ -16,7 +16,7 @@ body {
 }
 
 main {
-  width: min(96vw, 960px);
+  width: min(96vw, 1280px);
 }
 
 #hud {
@@ -34,9 +34,17 @@ main {
   color: #e9ff70;
 }
 
+#play-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 14px;
+  align-items: start;
+}
+
 #game {
   position: relative;
   overflow: hidden;
+  min-width: 0;
   border: 1px solid rgba(83, 243, 255, .85);
   box-shadow:
     0 0 0 1px rgba(255, 79, 216, .14),
@@ -71,6 +79,104 @@ main {
   );
   mix-blend-mode: screen;
   animation: crt-drift 7s linear infinite;
+}
+
+#match-hud {
+  position: relative;
+  min-height: 250px;
+  padding: 18px 18px 20px 22px;
+  box-sizing: border-box;
+  border: 1px solid rgba(83, 243, 255, .55);
+  background:
+    linear-gradient(180deg, rgba(6, 18, 24, .96), rgba(2, 8, 13, .94)),
+    #02080d;
+  box-shadow:
+    inset 0 0 28px rgba(83, 243, 255, .035),
+    0 0 22px rgba(83, 243, 255, .08);
+  overflow: hidden;
+}
+
+#match-hud[hidden] {
+  display: none;
+}
+
+.match-hud__accent {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: #53f3ff;
+  box-shadow: 0 0 14px rgba(83, 243, 255, .55);
+}
+
+.match-hud__content {
+  display: flex;
+  flex-direction: column;
+  min-height: 214px;
+}
+
+.match-hud__eyebrow {
+  margin-bottom: 14px;
+  color: #7fa7ad;
+  font-size: 11px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.match-hud__primary {
+  margin-bottom: 18px;
+  color: #53f3ff;
+  font-size: clamp(20px, 2vw, 28px);
+  font-weight: 700;
+  line-height: 1.05;
+  text-shadow: 0 0 13px rgba(83, 243, 255, .2);
+}
+
+.match-hud__secondary,
+.match-hud__controls {
+  white-space: pre-line;
+}
+
+.match-hud__secondary {
+  color: #f4fbff;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.match-hud__controls {
+  margin-top: auto;
+  padding-top: 22px;
+  border-top: 1px solid rgba(83, 243, 255, .14);
+  color: #e9ff70;
+  font-size: 11px;
+  line-height: 1.65;
+}
+
+#match-hud[data-tone="danger"] {
+  border-color: rgba(255, 79, 216, .65);
+}
+
+#match-hud[data-tone="danger"] .match-hud__accent {
+  background: #ff4fd8;
+  box-shadow: 0 0 14px rgba(255, 79, 216, .55);
+}
+
+#match-hud[data-tone="danger"] .match-hud__primary {
+  color: #ff4fd8;
+  text-shadow: 0 0 13px rgba(255, 79, 216, .22);
+}
+
+#match-hud[data-tone="success"] {
+  border-color: rgba(233, 255, 112, .62);
+}
+
+#match-hud[data-tone="success"] .match-hud__accent {
+  background: #e9ff70;
+  box-shadow: 0 0 14px rgba(233, 255, 112, .42);
+}
+
+#match-hud[data-tone="success"] .match-hud__primary {
+  color: #e9ff70;
+  text-shadow: 0 0 13px rgba(233, 255, 112, .18);
 }
 
 canvas {
@@ -129,6 +235,38 @@ html[data-reduced-motion="true"] #game::after {
 }
 html[data-reduced-motion="true"] canvas {
   transition: none;
+}
+
+@media (max-width: 1100px) {
+  main {
+    width: min(96vw, 960px);
+  }
+
+  #play-layout {
+    grid-template-columns: 1fr;
+  }
+
+  #match-hud {
+    min-height: 0;
+  }
+
+  .match-hud__content {
+    min-height: 0;
+  }
+
+  .match-hud__primary {
+    font-size: 20px;
+    margin-bottom: 10px;
+  }
+
+  .match-hud__secondary {
+    line-height: 1.45;
+  }
+
+  .match-hud__controls {
+    margin-top: 16px;
+    padding-top: 12px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
