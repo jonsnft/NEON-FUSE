@@ -45,6 +45,14 @@ Official maps expose deterministic balance metrics through the shared `analyzeAr
 
 These are regression/reference metrics for research and playtesting, not claims that one map density is universally optimal.
 
+## Visual direction
+
+NEON FUSE uses an original cyberpunk / retro-future presentation built around dark grid arenas, cyan/magenta/acid signal colors, machine-like HUD language and event-weighted neon energy. Competitive silhouettes and readability take priority over decorative effects.
+
+The client rendering architecture deliberately separates authoritative `GameState` from presentation state. Network snapshots remain authoritative while the renderer may interpolate positions and animate pulse/glow/scan effects at display frame rate. Presentation coordinates never participate in collision, hit detection, Core placement or network intents.
+
+Phase 1 uses low-cost Phaser Graphics rendering. GPU bloom/CRT post-processing, particles, trails and imported production art are later quality layers rather than simulation dependencies. See `docs/research/2026-10-03-cyberpunk-presentation-and-motion.md` and ADR 0009.
+
 ## Game-design governance
 
 Material changes to gameplay, lobby rules, maps, items, match flow, creator content or economy-adjacent behavior follow a research-first repository workflow:

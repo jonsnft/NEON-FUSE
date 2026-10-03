@@ -8,13 +8,13 @@ import {
   type Direction,
   type GameState
 } from "@neon-fuse/shared";
-import { renderWorld } from "../render/renderWorld";
+import { NeonWorldRenderer } from "../render/NeonWorldRenderer";
 
 const LOCAL_PLAYER = "local-player";
 
 export class GameScene extends Scene {
   private state!: GameState;
-  private graphics!: GameObjects.Graphics;
+  private worldRenderer!: NeonWorldRenderer;
   private status!: GameObjects.Text;
   private keys!: Record<string, Input.Keyboard.Key>;
   private nextMoveAt = 0;
@@ -25,11 +25,11 @@ export class GameScene extends Scene {
 
   create(): void {
     this.state = createArena([LOCAL_PLAYER]);
-    this.graphics = this.add.graphics();
+    this.worldRenderer = new NeonWorldRenderer(this);
     this.status = this.add.text(10, 8, "", {
       fontFamily: "monospace",
       fontSize: "14px",
-      color: "#dff"
+      color: "#53f3ff"
     }).setDepth(10);
 
     if (!this.input.keyboard) throw new Error("Keyboard input unavailable");
@@ -47,12 +47,17 @@ export class GameScene extends Scene {
       reset: Input.Keyboard.KeyCodes.R
     }) as Record<string, Input.Keyboard.Key>;
 
-    this.renderState();
+    this.worldRenderer.setState(this.state, LOCAL_PLAYER);
+    this.worldRenderer.render(0, 0);
+    this.renderStatus();
+
+    this.events.once("shutdown", () => this.worldRenderer.destroy());
   }
 
   update(time: number, delta: number): void {
     if (Input.Keyboard.JustDown(this.keys.reset)) {
       this.state = createArena([LOCAL_PLAYER]);
+      this.worldRenderer.clearState();
     }
 
     if (Input.Keyboard.JustDown(this.keys.core)) {
@@ -68,7 +73,9 @@ export class GameScene extends Scene {
     }
 
     tickSimulation(this.state, Math.min(delta, 100));
-    this.renderState();
+    this.worldRenderer.setState(this.state, LOCAL_PLAYER);
+    this.worldRenderer.render(time, delta);
+    this.renderStatus();
   }
 
   private heldDirection(): Direction | null {
@@ -79,8 +86,7 @@ export class GameScene extends Scene {
     return null;
   }
 
-  private renderState(): void {
-    renderWorld(this.graphics, this.state, LOCAL_PLAYER);
+  private renderStatus(): void {
     const player = playerById(this.state, LOCAL_PLAYER);
     this.status.setText(
       player?.alive
