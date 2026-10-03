@@ -2,7 +2,7 @@
 
 Date: 2026-10-03
 Branch: `feature/cyberpunk-production-assets`
-Status: Pending final CI
+Status: Verified on CI #89; final documentation CI pending
 
 ## Implemented
 - original `CyberpunkAssetLayer` as a bounded client-only vector art pass;
@@ -27,4 +27,4 @@ No third-party art assets are included. External cyberpunk packs were used only 
 - rendering work remains bounded by current arena and entity counts.
 
 ## Verification
-Pending architecture guard, typecheck, tests, production build, Compose validation and both Docker image builds.
+CI #89 passed architecture guard, typecheck, tests, production build, Compose validation and both Docker image builds. A final CI run on this documentation-only head must also pass before merge.
