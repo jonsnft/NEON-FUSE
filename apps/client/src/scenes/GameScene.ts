@@ -14,7 +14,7 @@ const LOCAL_PLAYER = "local-player";
 
 export class GameScene extends Scene {
   private state!: GameState;
-  private renderer!: NeonWorldRenderer;
+  private worldRenderer!: NeonWorldRenderer;
   private status!: GameObjects.Text;
   private keys!: Record<string, Input.Keyboard.Key>;
   private nextMoveAt = 0;
@@ -25,7 +25,7 @@ export class GameScene extends Scene {
 
   create(): void {
     this.state = createArena([LOCAL_PLAYER]);
-    this.renderer = new NeonWorldRenderer(this);
+    this.worldRenderer = new NeonWorldRenderer(this);
     this.status = this.add.text(10, 8, "", {
       fontFamily: "monospace",
       fontSize: "14px",
@@ -47,17 +47,17 @@ export class GameScene extends Scene {
       reset: Input.Keyboard.KeyCodes.R
     }) as Record<string, Input.Keyboard.Key>;
 
-    this.renderer.setState(this.state, LOCAL_PLAYER);
-    this.renderer.render(0, 0);
+    this.worldRenderer.setState(this.state, LOCAL_PLAYER);
+    this.worldRenderer.render(0, 0);
     this.renderStatus();
 
-    this.events.once("shutdown", () => this.renderer.destroy());
+    this.events.once("shutdown", () => this.worldRenderer.destroy());
   }
 
   update(time: number, delta: number): void {
     if (Input.Keyboard.JustDown(this.keys.reset)) {
       this.state = createArena([LOCAL_PLAYER]);
-      this.renderer.clearState();
+      this.worldRenderer.clearState();
     }
 
     if (Input.Keyboard.JustDown(this.keys.core)) {
@@ -73,8 +73,8 @@ export class GameScene extends Scene {
     }
 
     tickSimulation(this.state, Math.min(delta, 100));
-    this.renderer.setState(this.state, LOCAL_PLAYER);
-    this.renderer.render(time, delta);
+    this.worldRenderer.setState(this.state, LOCAL_PLAYER);
+    this.worldRenderer.render(time, delta);
     this.renderStatus();
   }
 
