@@ -4,6 +4,9 @@ import { GameScene } from "./scenes/GameScene";
 import { LobbyScene } from "./scenes/LobbyScene";
 import { OnlineGameScene } from "./scenes/OnlineGameScene";
 import { StorePreviewScene } from "./scenes/StorePreviewScene";
+import { initVisualPreferences } from "./render/visualSettings";
+
+initVisualPreferences();
 
 const offline = new URLSearchParams(window.location.search).get("offline") === "1";
 
