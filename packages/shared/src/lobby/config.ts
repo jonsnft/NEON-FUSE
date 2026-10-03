@@ -3,9 +3,11 @@ import {
   DEFAULT_GAME_RULES,
   ITEM_PRESET_IDS,
   MODIFIER_PRESET_IDS,
+  PACE_PRESET_IDS,
   type GameRules,
   type ItemPresetId,
-  type ModifierPresetId
+  type ModifierPresetId,
+  type PacePresetId
 } from "../rules/types";
 
 export const MIN_LOBBY_PLAYERS = 2;
@@ -37,13 +39,14 @@ export function isLobbyConfigureRequest(value: unknown): value is LobbyConfigure
   if (!candidate.patch || typeof candidate.patch !== "object" || Array.isArray(candidate.patch)) return false;
 
   const patch = candidate.patch as Record<string, unknown>;
-  const allowed = new Set(["maxPlayers", "mapId", "itemPresetId", "modifierPresetId"]);
+  const allowed = new Set(["maxPlayers", "mapId", "itemPresetId", "modifierPresetId", "pacePresetId"]);
   if (Object.keys(patch).some((key) => !allowed.has(key))) return false;
 
   if ("maxPlayers" in patch && !Number.isInteger(patch.maxPlayers)) return false;
   if ("mapId" in patch && !(OFFICIAL_MAP_IDS as readonly unknown[]).includes(patch.mapId)) return false;
   if ("itemPresetId" in patch && !(ITEM_PRESET_IDS as readonly unknown[]).includes(patch.itemPresetId)) return false;
   if ("modifierPresetId" in patch && !(MODIFIER_PRESET_IDS as readonly unknown[]).includes(patch.modifierPresetId)) return false;
+  if ("pacePresetId" in patch && !(PACE_PRESET_IDS as readonly unknown[]).includes(patch.pacePresetId)) return false;
   return Object.keys(patch).length > 0;
 }
 
@@ -59,5 +62,6 @@ export function applyLobbyConfigPatch(
   if (!(OFFICIAL_MAP_IDS as readonly string[]).includes(next.mapId)) return null;
   if (!(ITEM_PRESET_IDS as readonly string[]).includes(next.itemPresetId as ItemPresetId)) return null;
   if (!(MODIFIER_PRESET_IDS as readonly string[]).includes(next.modifierPresetId as ModifierPresetId)) return null;
+  if (!(PACE_PRESET_IDS as readonly string[]).includes(next.pacePresetId as PacePresetId)) return null;
   return next;
 }
