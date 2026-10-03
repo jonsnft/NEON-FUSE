@@ -26,7 +26,7 @@ export class OnlineGameScene extends Scene {
   private state: GameState | null = null;
   private snapshot: MatchSnapshot | null = null;
   private connection = new MatchConnection();
-  private renderer!: NeonWorldRenderer;
+  private worldRenderer!: NeonWorldRenderer;
   private status!: GameObjects.Text;
   private help!: GameObjects.Text;
   private chat!: LobbyChat;
@@ -48,7 +48,7 @@ export class OnlineGameScene extends Scene {
   }
 
   create(): void {
-    this.renderer = new NeonWorldRenderer(this);
+    this.worldRenderer = new NeonWorldRenderer(this);
     this.status = this.add.text(10, 8, "CONNECTING", {
       fontFamily: "monospace",
       fontSize: "14px",
@@ -90,7 +90,7 @@ export class OnlineGameScene extends Scene {
 
     this.events.once("shutdown", () => {
       this.chat.destroy();
-      this.renderer.destroy();
+      this.worldRenderer.destroy();
       void this.connection.disconnect();
     });
 
@@ -109,7 +109,7 @@ export class OnlineGameScene extends Scene {
   }
 
   update(time: number, delta: number): void {
-    this.renderer.render(time, delta);
+    this.worldRenderer.render(time, delta);
     if (this.chat.isTyping) return;
 
     if (Input.Keyboard.JustDown(this.keys.lobby)) {
@@ -226,7 +226,7 @@ export class OnlineGameScene extends Scene {
 
     if (snapshot.status === "waiting") {
       this.state = null;
-      this.renderer.clearState();
+      this.worldRenderer.clearState();
       this.chat.setEnabled(true);
       this.renderStatus();
       return;
@@ -235,7 +235,7 @@ export class OnlineGameScene extends Scene {
     this.chat.setEnabled(false);
     this.playSnapshotCues(snapshot.game, snapshot.status);
     this.state = snapshot.game;
-    this.renderer.setState(
+    this.worldRenderer.setState(
       this.state,
       this.connection.playerId ?? undefined,
       snapshot.presentations
