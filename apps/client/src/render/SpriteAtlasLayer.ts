@@ -1,7 +1,8 @@
-import { GameObjects, Scene } from "phaser";
+import { GameObjects, Input, Scene } from "phaser";
 import {
   cosmeticById,
   indexOf,
+  type Direction,
   type GameState,
   type PlayerPresentation,
   type SimCore,
@@ -31,6 +32,20 @@ const PLAYER_COLORS = [
   0x6dffb2,
   0xffffff
 ] as const;
+
+const MOVE_DELTA: Record<Direction, readonly [number, number]> = {
+  up: [0, -1],
+  down: [0, 1],
+  left: [-1, 0],
+  right: [1, 0]
+};
+
+interface LocalPrediction {
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+}
 
 interface PlayerSpriteState {
   image: GameObjects.Image;
@@ -77,6 +92,8 @@ export class SpriteAtlasLayer {
   private readonly cores = new Map<string, CoreSpriteState>();
   private readonly pickups = new Map<string, GameObjects.Image>();
   private readonly selection: GameObjects.Graphics;
+  private readonly movementKeys: Record<string, Input.Keyboard.Key> | null;
+  private localPrediction: LocalPrediction | null = null;
   private tileWidth = 0;
   private tileHeight = 0;
   private tileMapId = "";
@@ -84,6 +101,18 @@ export class SpriteAtlasLayer {
 
   constructor(private readonly scene: Scene) {
     this.selection = scene.add.graphics().setDepth(2.6);
+    this.movementKeys = scene.input.keyboard
+      ? scene.input.keyboard.addKeys({
+          up: Input.Keyboard.KeyCodes.UP,
+          down: Input.Keyboard.KeyCodes.DOWN,
+          left: Input.Keyboard.KeyCodes.LEFT,
+          right: Input.Keyboard.KeyCodes.RIGHT,
+          w: Input.Keyboard.KeyCodes.W,
+          s: Input.Keyboard.KeyCodes.S,
+          a: Input.Keyboard.KeyCodes.A,
+          d: Input.Keyboard.KeyCodes.D
+        }) as Record<string, Input.Keyboard.Key>
+      : null;
   }
 
   setState(
@@ -102,6 +131,7 @@ export class SpriteAtlasLayer {
 
   clearState(): void {
     this.state = null;
+    this.localPrediction = null;
     this.destroyTiles();
     this.destroyDynamic();
     this.selection.clear();
@@ -120,6 +150,9 @@ export class SpriteAtlasLayer {
     const animated = preferences.ambientMotionEnabled && preferences.quality !== "low";
     const follow = 1 - Math.exp(-Math.max(0, deltaMs) / 42);
 
+    // Local player response starts on the same render frame as the key press.
+    // The server remains authoritative; stale snapshots do not cancel this one-tile visual prediction.
+    this.startImmediateLocalMove(state);
     this.selection.clear();
 
     for (let index = 0; index < state.players.length; index++) {
@@ -210,6 +243,65 @@ export class SpriteAtlasLayer {
     }
   }
 
+  private startImmediateLocalMove(state: GameState): void {
+    if (!this.selfId || !this.movementKeys || this.localPrediction) return;
+    const player = state.players.find((candidate) => candidate.id === this.selfId);
+    const visual = this.players.get(this.selfId);
+    if (!player?.alive || !visual) return;
+
+    // Prediction is keyed off the authoritative tile/visual TARGET, never exact rendered pixels.
+    // This avoids input latency caused by exponential interpolation never landing on an exact center.
+    const authoritativeX = player.x * TILE + TILE / 2;
+    const authoritativeY = player.y * TILE + TILE / 2;
+    if (visual.targetX !== authoritativeX || visual.targetY !== authoritativeY) return;
+
+    const direction = this.heldDirection();
+    if (!direction) return;
+    const [dx, dy] = MOVE_DELTA[direction];
+    const toX = player.x + dx;
+    const toY = player.y + dy;
+    if (toX < 0 || toY < 0 || toX >= state.width || toY >= state.height) return;
+    if (state.tiles[indexOf(state, toX, toY)] !== "floor") return;
+    if (state.cores.some((core) => core.x === toX && core.y === toY)) return;
+    if (
+      state.players.some(
+        (other) => other.alive && other.id !== player.id && other.x === toX && other.y === toY
+      )
+    ) return;
+
+    this.localPrediction = {
+      fromX: player.x,
+      fromY: player.y,
+      toX,
+      toY
+    };
+    visual.facing = direction;
+    visual.targetX = toX * TILE + TILE / 2;
+    visual.targetY = toY * TILE + TILE / 2;
+    visual.movingUntilMs = this.scene.time.now + 130;
+  }
+
+  private heldDirection(): Direction | null {
+    const keys = this.movementKeys;
+    if (!keys) return null;
+    const candidates: Array<{ direction: Direction; timeDown: number }> = [];
+    const pushIfDown = (direction: Direction, key: Input.Keyboard.Key): void => {
+      if (key.isDown) candidates.push({ direction, timeDown: key.timeDown });
+    };
+
+    pushIfDown("up", keys.up);
+    pushIfDown("up", keys.w);
+    pushIfDown("down", keys.down);
+    pushIfDown("down", keys.s);
+    pushIfDown("left", keys.left);
+    pushIfDown("left", keys.a);
+    pushIfDown("right", keys.right);
+    pushIfDown("right", keys.d);
+
+    candidates.sort((a, b) => b.timeDown - a.timeDown);
+    return candidates[0]?.direction ?? null;
+  }
+
   private syncTiles(state: GameState): void {
     const geometryChanged = this.tileWidth !== state.width || this.tileHeight !== state.height;
     if (geometryChanged) {
@@ -278,7 +370,24 @@ export class SpriteAtlasLayer {
         continue;
       }
 
-      if (visual.targetX !== targetX || visual.targetY !== targetY) {
+      if (player.id === this.selfId && this.localPrediction) {
+        const prediction = this.localPrediction;
+        if (player.x === prediction.toX && player.y === prediction.toY) {
+          // Server confirmed the predicted tile. Keep the visual target; no replay/no hitch.
+          this.localPrediction = null;
+        } else if (player.x === prediction.fromX && player.y === prediction.fromY) {
+          // This is a stale snapshot while the move is in flight. Do not pull the player backwards.
+        } else {
+          // Authoritative disagreement (collision/other state change): reconcile to the server.
+          this.localPrediction = null;
+          if (visual.targetX !== targetX || visual.targetY !== targetY) {
+            visual.facing = inferFacing(visual.targetX, visual.targetY, targetX, targetY, visual.facing);
+            visual.movingUntilMs = this.scene.time.now + 130;
+            visual.targetX = targetX;
+            visual.targetY = targetY;
+          }
+        }
+      } else if (visual.targetX !== targetX || visual.targetY !== targetY) {
         visual.facing = inferFacing(visual.targetX, visual.targetY, targetX, targetY, visual.facing);
         visual.movingUntilMs = this.scene.time.now + 130;
         visual.targetX = targetX;
@@ -286,9 +395,15 @@ export class SpriteAtlasLayer {
       }
 
       if (visual.alive && !player.alive) {
+        if (player.id === this.selfId) this.localPrediction = null;
         visual.eliminatedAtMs = this.scene.time.now;
       } else if (!visual.alive && player.alive) {
+        if (player.id === this.selfId) this.localPrediction = null;
         visual.eliminatedAtMs = null;
+        visual.x = targetX;
+        visual.y = targetY;
+        visual.targetX = targetX;
+        visual.targetY = targetY;
         visual.image.setVisible(true);
       }
       visual.alive = player.alive;
