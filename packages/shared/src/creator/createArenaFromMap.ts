@@ -1,14 +1,10 @@
 import { GAME } from "../constants/game";
 import { DEFAULT_GAME_RULES, type GameRules } from "../rules/types";
 import { pickupKindsForRules } from "../rules/catalog";
-import type { SimPickup, SimPlayer, GameState } from "../sim/types";
+import { distributePickups } from "../sim/pickups";
+import type { SimPlayer, GameState } from "../sim/types";
 import type { CreatorMapDefinition } from "./types";
 import { validateCreatorMap } from "./validateMap";
-
-function pickupCountForMatch(softCells: number, playerCount: number, allowedKinds: number): number {
-  if (allowedKinds === 0 || softCells === 0) return 0;
-  return Math.min(softCells, Math.max(allowedKinds, playerCount));
-}
 
 export function createArenaFromMap(
   map: CreatorMapDefinition,
@@ -45,18 +41,11 @@ export function createArenaFromMap(
     .filter(({ tile }) => tile === "soft")
     .map(({ index }) => ({ x: index % mapValue.width, y: Math.floor(index / mapValue.width) }));
 
-  const pickupKinds = [...pickupKindsForRules(rules)];
-  const targetPickupCount = pickupCountForMatch(softCells.length, playerIds.length, pickupKinds.length);
-  const pickupPositions = Array.from({ length: targetPickupCount }, (_, index) => {
-    if (targetPickupCount === 1) return softCells[Math.floor(softCells.length / 2)];
-    const position = Math.round(index * (softCells.length - 1) / (targetPickupCount - 1));
-    return softCells[position];
-  });
-  const pickups: SimPickup[] = pickupPositions.map((position, index) => ({
-    ...position,
-    kind: pickupKinds[index % pickupKinds.length],
-    revealed: false
-  }));
+  const pickups = distributePickups(
+    softCells,
+    playerIds.length,
+    pickupKindsForRules(rules)
+  );
 
   return {
     mapId: mapValue.id,
@@ -76,7 +65,10 @@ export function createArenaFromMap(
         spawnIndex,
         coresPlaced: 0,
         pickupsCollected: { range: 0, capacity: 0, speed: 0 },
-        eliminatedAtMs: null
+        eliminations: 0,
+        selfEliminations: 0,
+        eliminatedAtMs: null,
+        eliminatedByPlayerId: null
       }))
     },
     elapsedMs: 0,
