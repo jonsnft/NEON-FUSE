@@ -43,6 +43,16 @@ export interface SimPickup {
   revealed: boolean;
 }
 
+export interface SimControlNode {
+  id: string;
+  x: number;
+  y: number;
+  ownerId: string | null;
+  capturingPlayerId: string | null;
+  captureProgressMs: number;
+  scoreAccumulatorMs: number;
+}
+
 export interface PlayerMatchMetrics {
   playerId: string;
   spawnIndex: number;
@@ -50,6 +60,8 @@ export interface PlayerMatchMetrics {
   pickupsCollected: Record<PickupKind, number>;
   eliminations: number;
   selfEliminations: number;
+  objectivePoints: number;
+  nodesCaptured: number;
   eliminatedAtMs: number | null;
   eliminatedByPlayerId: string | null;
 }
@@ -70,6 +82,7 @@ export interface GameState {
   cores: SimCore[];
   blasts: SimBlast[];
   pickups: SimPickup[];
+  controlNodes: SimControlNode[];
   metrics: MatchMetrics;
   elapsedMs: number;
   roundDurationMs: number;
@@ -94,8 +107,14 @@ export const metricsForPlayer = (
   playerId: string
 ): PlayerMatchMetrics | undefined => state.metrics.players.find((metrics) => metrics.playerId === playerId);
 
-export const scoreForPlayer = (state: GameState, playerId: string): number =>
-  metricsForPlayer(state, playerId)?.eliminations ?? 0;
+export const scoreForPlayer = (state: GameState, playerId: string): number => {
+  const metrics = metricsForPlayer(state, playerId);
+  if (!metrics) return 0;
+  const source = gameModePolicyForRules(state.rules).scoreSource;
+  if (source === "eliminations") return metrics.eliminations;
+  if (source === "control") return metrics.objectivePoints;
+  return 0;
+};
 
 export const remainingRoundMs = (state: GameState): number =>
   Math.max(0, state.roundDurationMs - state.elapsedMs);
