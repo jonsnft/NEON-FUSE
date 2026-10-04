@@ -51,18 +51,25 @@ export function playingHudDetails(
 
   const objective = state.rules.gameModeId === "core-rush"
     ? `CORE RUSH — score ${mode.scoreTarget ?? 0} clean eliminations. Reboot after a hit; pressure lanes instead of hiding.`
-    : alive <= 2
-      ? "FINAL DUEL — control lanes, force movement, survive your own blast paths."
-      : "OUTLAST THE GRID — break soft blocks, build power, trap routes, survive contraction.";
+    : state.rules.gameModeId === "grid-control"
+      ? `GRID CONTROL — capture a DATA NODE, then stay linked to upload SYNC. Contested nodes stop scoring; first to ${mode.scoreTarget ?? 0} wins.`
+      : alive <= 2
+        ? "FINAL DUEL — control lanes, force movement, survive your own blast paths."
+        : "OUTLAST THE GRID — break soft blocks, build power, trap routes, survive contraction.";
+
+  const modeScore = state.rules.gameModeId === "grid-control"
+    ? `SYNC  ${scoreForPlayer(state, playerId)}/${mode.scoreTarget ?? "-"}`
+    : state.rules.gameModeId === "core-rush"
+      ? `SCORE  ${scoreForPlayer(state, playerId)}/${mode.scoreTarget ?? "-"}`
+      : `ELIMS  ${metrics?.eliminations ?? 0}`;
 
   return {
     objective,
     items,
     telemetry: metrics
       ? [
-          state.rules.gameModeId === "core-rush"
-            ? `SCORE  ${scoreForPlayer(state, playerId)}/${mode.scoreTarget ?? "-"}`
-            : `ELIMS  ${metrics.eliminations}`,
+          modeScore,
+          ...(state.rules.gameModeId === "grid-control" ? [`NODES CAPTURED  ${metrics.nodesCaptured}`] : []),
           `CORES PLACED  ${metrics.coresPlaced}`,
           `PICKUPS  ${pickupTotal(metrics.pickupsCollected)}`,
           `MATCH CHAINS  ${state.metrics.chainDetonations}`
@@ -77,12 +84,15 @@ export function rebootHudDetails(state: GameState, playerId: string): HudDetails
   const remainingMs = player?.respawnAtMs === null || player?.respawnAtMs === undefined
     ? 0
     : Math.max(0, player.respawnAtMs - state.elapsedMs);
+  const scoreLabel = state.rules.gameModeId === "grid-control" ? "SYNC" : "SCORE";
 
   return {
-    objective: "SIGNAL REBOOT — read the active blast lanes now; you return with a short phase shield.",
+    objective: state.rules.gameModeId === "grid-control"
+      ? "SIGNAL REBOOT — read which DATA NODE is exposed; return under phase shield and contest the uplink."
+      : "SIGNAL REBOOT — read the active blast lanes now; you return with a short phase shield.",
     telemetry: [
       `REBOOT  ${(remainingMs / 1000).toFixed(1)}s`,
-      `SCORE  ${scoreForPlayer(state, playerId)}/${mode.scoreTarget ?? "-"}`,
+      `${scoreLabel}  ${scoreForPlayer(state, playerId)}/${mode.scoreTarget ?? "-"}`,
       `MATCH CHAINS  ${state.metrics.chainDetonations}`
     ]
   };
@@ -103,9 +113,12 @@ export function finishedHudDetails(state: GameState, playerId?: string): HudDeta
   const mode = gameModePolicyForRules(state.rules);
   const telemetry = metrics
     ? [
-        state.rules.gameModeId === "core-rush"
-          ? `YOUR SCORE  ${metrics.eliminations}/${mode.scoreTarget ?? "-"}`
-          : `YOUR ELIMS  ${metrics.eliminations}`,
+        state.rules.gameModeId === "grid-control"
+          ? `YOUR SYNC  ${metrics.objectivePoints}/${mode.scoreTarget ?? "-"}`
+          : state.rules.gameModeId === "core-rush"
+            ? `YOUR SCORE  ${metrics.eliminations}/${mode.scoreTarget ?? "-"}`
+            : `YOUR ELIMS  ${metrics.eliminations}`,
+        ...(state.rules.gameModeId === "grid-control" ? [`NODES CAPTURED  ${metrics.nodesCaptured}`] : []),
         `YOUR CORES  ${metrics.coresPlaced}`,
         `YOUR PICKUPS  ${pickupTotal(metrics.pickupsCollected)}`,
         `SELF ELIMS  ${metrics.selfEliminations}`,
