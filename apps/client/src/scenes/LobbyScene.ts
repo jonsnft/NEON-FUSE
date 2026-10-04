@@ -1,6 +1,12 @@
 import { GameObjects, Input, Scene } from "phaser";
+import { GAME_MODES, type GameModeId } from "@neon-fuse/shared";
 import { LobbyConnection, type LobbyRoomInfo } from "../net/LobbyConnection";
 import { preloadProductionAtlas } from "../render/spriteAtlas";
+
+const modeLabel = (id?: string): string => {
+  if (!id || !(id in GAME_MODES)) return "CLASSIC DEATHMATCH";
+  return GAME_MODES[id as GameModeId].displayName;
+};
 
 export class LobbyScene extends Scene {
   private rooms: LobbyRoomInfo[] = [];
@@ -94,12 +100,12 @@ export class LobbyScene extends Scene {
 
   private renderHelp(): void {
     if (!this.connected) return;
-    this.status.setText("Q QUICK MATCH // 1-7 JOIN ROOM // CREATOR CONFIGURES RULES IN ROOM // S ITEMS");
+    this.status.setText("Q QUICK MATCH // 1-7 JOIN ROOM // CREATOR SELECTS & EXPLAINS MODE IN ROOM // S ITEMS");
   }
 
   private renderRooms(): void {
     if (this.rooms.length === 0) {
-      this.list.setText("NO OPEN ROOMS\n\nPRESS Q TO CREATE / QUICK-JOIN A MATCH");
+      this.list.setText("NO OPEN ROOMS\n\nPRESS Q TO CREATE / QUICK-JOIN A CLASSIC DEATHMATCH");
       return;
     }
 
@@ -110,11 +116,9 @@ export class LobbyScene extends Scene {
         const max = room.metadata?.maxPlayers ?? room.maxClients;
         const ready = room.metadata?.readyPlayers ?? 0;
         const map = room.metadata?.mapId ?? "grid-zero";
-        const items = room.metadata?.itemPresetId ?? "standard";
-        const modifier = room.metadata?.modifierPresetId ?? "standard";
-        const pace = room.metadata?.pacePresetId ?? "standard";
-        return `[${index + 1}] ${room.roomId.slice(0, 8)}  ${phase.toUpperCase()}  ${players}/${max}  READY:${ready}  MAP:${map}  ITEMS:${items}  MOD:${modifier}  PACE:${pace}`;
-      }).join("\n")
+        const mode = modeLabel(room.metadata?.gameModeId);
+        return `[${index + 1}] ${room.roomId.slice(0, 8)}  ${phase.toUpperCase()}  ${players}/${max}  READY:${ready}\n    ${mode}  //  MAP:${map}`;
+      }).join("\n\n")
     );
   }
 }
