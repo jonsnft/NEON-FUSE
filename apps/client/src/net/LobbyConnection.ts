@@ -13,6 +13,7 @@ export interface LobbyRoomInfo {
     connectedPlayers?: number;
     readyPlayers?: number;
     mapId?: string;
+    gameModeId?: string;
     itemPresetId?: string;
     modifierPresetId?: string;
     pacePresetId?: string;
