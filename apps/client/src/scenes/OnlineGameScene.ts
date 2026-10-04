@@ -1,5 +1,6 @@
 import { Input, Scene } from "phaser";
 import {
+  BOT_DIFFICULTIES,
   GAME_MODE_IDS,
   GAME_MODES,
   ITEM_PRESET_IDS,
@@ -98,6 +99,8 @@ export class OnlineGameScene extends Scene {
       items: Input.Keyboard.KeyCodes.I,
       modifier: Input.Keyboard.KeyCodes.G,
       pace: Input.Keyboard.KeyCodes.F,
+      bots: Input.Keyboard.KeyCodes.B,
+      botDifficulty: Input.Keyboard.KeyCodes.H,
       lobby: Input.Keyboard.KeyCodes.ESC
     }) as Record<string, Input.Keyboard.Key>;
 
@@ -218,7 +221,7 @@ export class OnlineGameScene extends Scene {
     }
 
     if (Input.Keyboard.JustDown(this.keys.players)) {
-      const minimum = Math.max(this.snapshot.connectedPlayers, this.snapshot.requiredPlayers);
+      const minimum = Math.max(this.snapshot.connectedPlayers + config.botCount, this.snapshot.requiredPlayers + config.botCount);
       const next = config.maxPlayers >= 8 ? minimum : Math.max(minimum, config.maxPlayers + 1);
       this.connection.configureLobby({ maxPlayers: next });
     }
@@ -248,6 +251,19 @@ export class OnlineGameScene extends Scene {
       const index = PACE_PRESET_IDS.indexOf(config.pacePresetId);
       this.connection.configureLobby({
         pacePresetId: PACE_PRESET_IDS[(index + 1) % PACE_PRESET_IDS.length]
+      });
+    }
+
+    if (Input.Keyboard.JustDown(this.keys.bots)) {
+      const maxBots = Math.max(0, config.maxPlayers - this.snapshot.connectedPlayers);
+      const next = config.botCount >= maxBots ? 0 : config.botCount + 1;
+      this.connection.configureLobby({ botCount: next });
+    }
+
+    if (Input.Keyboard.JustDown(this.keys.botDifficulty)) {
+      const index = BOT_DIFFICULTIES.indexOf(config.botDifficulty);
+      this.connection.configureLobby({
+        botDifficulty: BOT_DIFFICULTIES[(index + 1) % BOT_DIFFICULTIES.length]
       });
     }
   }
@@ -338,13 +354,14 @@ export class OnlineGameScene extends Scene {
       const mapName = OFFICIAL_MAPS[config.mapId].displayName.toUpperCase();
       const mode = GAME_MODES[config.gameModeId];
       const modeName = mode.displayName;
-      const primary = `${this.snapshot.connectedPlayers}/${config.maxPlayers} PLAYERS   ${this.snapshot.readyPlayerIds.length}/${this.snapshot.connectedPlayers} READY`;
-      const secondary = `MODE ${modeName}   MAP ${mapName}\n${mode.objective} — ${mode.description}\nITEMS ${config.itemPresetId.toUpperCase()}   MOD ${config.modifierPresetId.toUpperCase()}   PACE ${config.pacePresetId.toUpperCase()}${isCreator ? "   CREATOR" : ""}`;
+      const totalPlayers = this.snapshot.connectedPlayers + config.botCount;
+      const primary = `${totalPlayers}/${config.maxPlayers} PLAYERS   ${this.snapshot.connectedPlayers} HUMAN   ${config.botCount} AI   ${this.snapshot.readyPlayerIds.length}/${this.snapshot.connectedPlayers} READY`;
+      const secondary = `MODE ${modeName}   MAP ${mapName}\n${mode.objective} — ${mode.description}\nAI ${config.botCount} / ${config.botDifficulty.toUpperCase()}   ITEMS ${config.itemPresetId.toUpperCase()}   MOD ${config.modifierPresetId.toUpperCase()}   PACE ${config.pacePresetId.toUpperCase()}${isCreator ? "   CREATOR" : ""}`;
 
       let controls: string;
       if (isCreator) {
         const start = allReady ? "ENTER START   " : "";
-        controls = `${start}O MODE   M MAP   P PLAYERS   I ITEMS   G MOD   F PACE\n${ready ? "R UNREADY" : "R READY"}   T CHAT   ESC LOBBY`;
+        controls = `${start}O MODE   M MAP   P SLOTS   B AI COUNT   H AI LEVEL\nI ITEMS   G MOD   F PACE   ${ready ? "R UNREADY" : "R READY"}   T CHAT   ESC LOBBY`;
       } else if (allReady) {
         controls = "ALL READY - WAITING FOR CREATOR   T CHAT   ESC LOBBY";
       } else {
@@ -359,7 +376,7 @@ export class OnlineGameScene extends Scene {
         allReady ? "success" : "normal",
         {
           objective: isCreator
-            ? `SELECT MODE WITH O — ${mode.description}`
+            ? `B ADDS AI OPPONENTS / H CHANGES DIFFICULTY — ${mode.description}`
             : `${modeName} — ${mode.description}`
         }
       );
