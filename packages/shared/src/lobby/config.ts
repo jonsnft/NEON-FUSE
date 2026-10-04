@@ -1,3 +1,4 @@
+import { BOT_DIFFICULTIES, type BotDifficulty } from "../bots/ai";
 import { OFFICIAL_MAP_IDS, type OfficialMapId } from "../maps/official";
 import {
   DEFAULT_GAME_RULES,
@@ -14,10 +15,13 @@ import {
 
 export const MIN_LOBBY_PLAYERS = 2;
 export const MAX_LOBBY_PLAYERS = 8;
+export const MAX_BOTS = 7;
 
 export interface LobbyConfig extends GameRules {
   maxPlayers: number;
   mapId: OfficialMapId;
+  botCount: number;
+  botDifficulty: BotDifficulty;
 }
 
 export type LobbyConfigPatch = Partial<LobbyConfig>;
@@ -25,6 +29,8 @@ export type LobbyConfigPatch = Partial<LobbyConfig>;
 export const DEFAULT_LOBBY_CONFIG: LobbyConfig = {
   maxPlayers: MAX_LOBBY_PLAYERS,
   mapId: "grid-zero",
+  botCount: 0,
+  botDifficulty: "normal",
   ...DEFAULT_GAME_RULES
 };
 
@@ -41,10 +47,21 @@ export function isLobbyConfigureRequest(value: unknown): value is LobbyConfigure
   if (!candidate.patch || typeof candidate.patch !== "object" || Array.isArray(candidate.patch)) return false;
 
   const patch = candidate.patch as Record<string, unknown>;
-  const allowed = new Set(["maxPlayers", "mapId", "gameModeId", "itemPresetId", "modifierPresetId", "pacePresetId"]);
+  const allowed = new Set([
+    "maxPlayers",
+    "mapId",
+    "botCount",
+    "botDifficulty",
+    "gameModeId",
+    "itemPresetId",
+    "modifierPresetId",
+    "pacePresetId"
+  ]);
   if (Object.keys(patch).some((key) => !allowed.has(key))) return false;
 
   if ("maxPlayers" in patch && !Number.isInteger(patch.maxPlayers)) return false;
+  if ("botCount" in patch && !Number.isInteger(patch.botCount)) return false;
+  if ("botDifficulty" in patch && !(BOT_DIFFICULTIES as readonly unknown[]).includes(patch.botDifficulty)) return false;
   if ("mapId" in patch && !(OFFICIAL_MAP_IDS as readonly unknown[]).includes(patch.mapId)) return false;
   if ("gameModeId" in patch && !(GAME_MODE_IDS as readonly unknown[]).includes(patch.gameModeId)) return false;
   if ("itemPresetId" in patch && !(ITEM_PRESET_IDS as readonly unknown[]).includes(patch.itemPresetId)) return false;
@@ -62,6 +79,9 @@ export function applyLobbyConfigPatch(
   if (!Number.isInteger(next.maxPlayers)) return null;
   if (next.maxPlayers < MIN_LOBBY_PLAYERS || next.maxPlayers > MAX_LOBBY_PLAYERS) return null;
   if (next.maxPlayers < connectedPlayers) return null;
+  if (!Number.isInteger(next.botCount) || next.botCount < 0 || next.botCount > MAX_BOTS) return null;
+  if (connectedPlayers + next.botCount > next.maxPlayers) return null;
+  if (!(BOT_DIFFICULTIES as readonly string[]).includes(next.botDifficulty as BotDifficulty)) return null;
   if (!(OFFICIAL_MAP_IDS as readonly string[]).includes(next.mapId)) return null;
   if (!(GAME_MODE_IDS as readonly string[]).includes(next.gameModeId as GameModeId)) return null;
   if (!(ITEM_PRESET_IDS as readonly string[]).includes(next.itemPresetId as ItemPresetId)) return null;
