@@ -8,6 +8,7 @@ import {
 } from "../src";
 
 const standardRules = {
+  gameModeId: "survival" as const,
   itemPresetId: "standard" as const,
   modifierPresetId: "standard" as const,
   pacePresetId: "standard" as const
