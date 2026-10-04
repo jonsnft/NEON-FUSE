@@ -1,4 +1,5 @@
 import { gameModePolicyForRules, suddenDeathEnabledForRules } from "../rules/catalog";
+import { updateControlObjectives } from "./objectives";
 import type { GameState, SimPlayer } from "./types";
 import { indexOf, metricsForPlayer, scoreForPlayer, tileAt } from "./types";
 import { applySuddenDeath, enforceRoundDeadline } from "./suddenDeath";
@@ -67,6 +68,7 @@ export function tickSimulation(state: GameState, deltaMs: number): void {
 
   state.cores = state.cores.filter((core) => !exploded.has(core.id));
   applySuddenDeath(state);
+  updateControlObjectives(state, deltaMs);
   resolveRound(state);
   enforceRoundDeadline(state);
 }

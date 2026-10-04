@@ -1,5 +1,6 @@
 import { GameObjects, Scene } from "phaser";
 import {
+  gameModePolicyForRules,
   suddenDeathEnabledForRules,
   suddenDeathOrder,
   type GameState,
@@ -37,6 +38,7 @@ export class CombatReadabilityLayer {
     g.clear();
     if (!this.state) return;
 
+    this.drawControlNodes(g, this.state, timeMs);
     this.drawBlastGeometry(g, this.state);
     this.drawPressureTelegraph(g, this.state, timeMs);
     this.drawRespawnShields(g, this.state, timeMs);
@@ -44,6 +46,53 @@ export class CombatReadabilityLayer {
 
   destroy(): void {
     this.graphics.destroy();
+  }
+
+  private drawControlNodes(g: GameObjects.Graphics, state: GameState, timeMs: number): void {
+    if (!state.controlNodes.length) return;
+    const config = gameModePolicyForRules(state.rules).control;
+    if (!config) return;
+    const prefs = getVisualPreferences();
+
+    for (const node of state.controlNodes) {
+      const cx = node.x * TILE + TILE / 2;
+      const cy = node.y * TILE + TILE / 2;
+      const occupied = state.players.some(
+        (player) => player.alive && player.x === node.x && player.y === node.y
+      );
+      const contested = state.players.filter(
+        (player) => player.alive && player.x === node.x && player.y === node.y
+      ).length > 1;
+      const color = contested
+        ? NEON.danger
+        : node.capturingPlayerId
+          ? NEON.magenta
+          : node.ownerId
+            ? NEON.acid
+            : NEON.cyan;
+      const pulse = prefs.reducedMotion ? 0 : Math.sin(timeMs / 150 + node.x) * 2;
+
+      g.fillStyle(color, node.ownerId ? 0.08 : 0.045);
+      g.fillCircle(cx, cy, 19 + pulse);
+      g.lineStyle(node.ownerId ? 3 : 2, color, 0.9);
+      g.strokeCircle(cx, cy, 15 + pulse * 0.35);
+      g.lineStyle(1, NEON.white, 0.5);
+      g.strokeRect(cx - 9, cy - 9, 18, 18);
+      g.lineBetween(cx - 6, cy, cx + 6, cy);
+      g.lineBetween(cx, cy - 6, cx, cy + 6);
+
+      if (node.capturingPlayerId) {
+        const progress = Math.max(0, Math.min(1, node.captureProgressMs / config.captureMs));
+        const width = 30;
+        g.fillStyle(NEON.background, 0.9);
+        g.fillRect(cx - width / 2, cy + 18, width, 4);
+        g.fillStyle(color, 0.95);
+        g.fillRect(cx - width / 2, cy + 18, width * progress, 4);
+      } else if (node.ownerId && occupied && !contested) {
+        g.fillStyle(color, 0.8);
+        g.fillRect(cx - 11, cy + 18, 22, 2);
+      }
+    }
   }
 
   private drawBlastGeometry(g: GameObjects.Graphics, state: GameState): void {

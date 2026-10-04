@@ -7,6 +7,14 @@ import type {
   PacePresetId
 } from "./types";
 
+export type ScoreSource = "none" | "eliminations" | "control";
+
+export interface ControlModePolicy {
+  nodeCount: number;
+  captureMs: number;
+  pointIntervalMs: number;
+}
+
 export interface GameModePolicy {
   displayName: string;
   roundDurationMs: number;
@@ -14,6 +22,8 @@ export interface GameModePolicy {
   respawnDelayMs: number | null;
   respawnShieldMs: number;
   scoreTarget: number | null;
+  scoreSource: ScoreSource;
+  control: ControlModePolicy | null;
 }
 
 export const GAME_MODES: Readonly<Record<GameModeId, GameModePolicy>> = {
@@ -23,7 +33,9 @@ export const GAME_MODES: Readonly<Record<GameModeId, GameModePolicy>> = {
     suddenDeathAllowed: true,
     respawnDelayMs: null,
     respawnShieldMs: 0,
-    scoreTarget: null
+    scoreTarget: null,
+    scoreSource: "none",
+    control: null
   },
   "core-rush": {
     displayName: "CORE RUSH",
@@ -31,7 +43,23 @@ export const GAME_MODES: Readonly<Record<GameModeId, GameModePolicy>> = {
     suddenDeathAllowed: false,
     respawnDelayMs: 1_500,
     respawnShieldMs: 1_000,
-    scoreTarget: 5
+    scoreTarget: 5,
+    scoreSource: "eliminations",
+    control: null
+  },
+  "grid-control": {
+    displayName: "GRID CONTROL",
+    roundDurationMs: 180_000,
+    suddenDeathAllowed: false,
+    respawnDelayMs: 1_500,
+    respawnShieldMs: 1_000,
+    scoreTarget: 30,
+    scoreSource: "control",
+    control: {
+      nodeCount: 3,
+      captureMs: 1_000,
+      pointIntervalMs: 1_000
+    }
   }
 };
 

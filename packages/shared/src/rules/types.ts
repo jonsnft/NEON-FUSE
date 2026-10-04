@@ -1,4 +1,4 @@
-export const GAME_MODE_IDS = ["survival", "core-rush"] as const;
+export const GAME_MODE_IDS = ["survival", "core-rush", "grid-control"] as const;
 export type GameModeId = typeof GAME_MODE_IDS[number];
 
 export const ITEM_PRESET_IDS = ["standard", "no-speed", "no-items"] as const;

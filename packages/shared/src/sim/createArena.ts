@@ -1,6 +1,7 @@
 import { GAME } from "../constants/game";
 import { gameModePolicyForRules, pickupKindsForRules } from "../rules/catalog";
 import { DEFAULT_GAME_RULES, type GameRules } from "../rules/types";
+import { createControlNodes } from "./objectives";
 import { distributePickups } from "./pickups";
 import type { GameState, SimPlayer, TileKind } from "./types";
 import { indexOf } from "./types";
@@ -80,6 +81,7 @@ export function createArena(
     };
   });
   const mode = gameModePolicyForRules(rules);
+  const controlNodes = createControlNodes(width, height, tiles, players, rules);
 
   return {
     mapId: "grid-zero",
@@ -91,6 +93,7 @@ export function createArena(
     cores: [],
     blasts: [],
     pickups,
+    controlNodes,
     metrics: {
       chainDetonations: 0,
       reachedSuddenDeath: false,
@@ -101,6 +104,8 @@ export function createArena(
         pickupsCollected: { range: 0, capacity: 0, speed: 0 },
         eliminations: 0,
         selfEliminations: 0,
+        objectivePoints: 0,
+        nodesCaptured: 0,
         eliminatedAtMs: null,
         eliminatedByPlayerId: null
       }))
