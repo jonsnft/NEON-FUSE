@@ -72,7 +72,10 @@ describe("game mode policies", () => {
     for (let score = 0; score < target; score++) {
       armElimination(state, "p1", "p2");
       tickSimulation(state, 50);
-      if (score < target - 1) tickSimulation(state, 1500);
+      if (score < target - 1) {
+        tickSimulation(state, 1500);
+        tickSimulation(state, 1000);
+      }
     }
 
     expect(scoreForPlayer(state, "p1")).toBe(target);
