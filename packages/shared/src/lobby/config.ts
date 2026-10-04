@@ -1,9 +1,11 @@
 import { OFFICIAL_MAP_IDS, type OfficialMapId } from "../maps/official";
 import {
   DEFAULT_GAME_RULES,
+  GAME_MODE_IDS,
   ITEM_PRESET_IDS,
   MODIFIER_PRESET_IDS,
   PACE_PRESET_IDS,
+  type GameModeId,
   type GameRules,
   type ItemPresetId,
   type ModifierPresetId,
@@ -39,11 +41,12 @@ export function isLobbyConfigureRequest(value: unknown): value is LobbyConfigure
   if (!candidate.patch || typeof candidate.patch !== "object" || Array.isArray(candidate.patch)) return false;
 
   const patch = candidate.patch as Record<string, unknown>;
-  const allowed = new Set(["maxPlayers", "mapId", "itemPresetId", "modifierPresetId", "pacePresetId"]);
+  const allowed = new Set(["maxPlayers", "mapId", "gameModeId", "itemPresetId", "modifierPresetId", "pacePresetId"]);
   if (Object.keys(patch).some((key) => !allowed.has(key))) return false;
 
   if ("maxPlayers" in patch && !Number.isInteger(patch.maxPlayers)) return false;
   if ("mapId" in patch && !(OFFICIAL_MAP_IDS as readonly unknown[]).includes(patch.mapId)) return false;
+  if ("gameModeId" in patch && !(GAME_MODE_IDS as readonly unknown[]).includes(patch.gameModeId)) return false;
   if ("itemPresetId" in patch && !(ITEM_PRESET_IDS as readonly unknown[]).includes(patch.itemPresetId)) return false;
   if ("modifierPresetId" in patch && !(MODIFIER_PRESET_IDS as readonly unknown[]).includes(patch.modifierPresetId)) return false;
   if ("pacePresetId" in patch && !(PACE_PRESET_IDS as readonly unknown[]).includes(patch.pacePresetId)) return false;
@@ -60,6 +63,7 @@ export function applyLobbyConfigPatch(
   if (next.maxPlayers < MIN_LOBBY_PLAYERS || next.maxPlayers > MAX_LOBBY_PLAYERS) return null;
   if (next.maxPlayers < connectedPlayers) return null;
   if (!(OFFICIAL_MAP_IDS as readonly string[]).includes(next.mapId)) return null;
+  if (!(GAME_MODE_IDS as readonly string[]).includes(next.gameModeId as GameModeId)) return null;
   if (!(ITEM_PRESET_IDS as readonly string[]).includes(next.itemPresetId as ItemPresetId)) return null;
   if (!(MODIFIER_PRESET_IDS as readonly string[]).includes(next.modifierPresetId as ModifierPresetId)) return null;
   if (!(PACE_PRESET_IDS as readonly string[]).includes(next.pacePresetId as PacePresetId)) return null;
