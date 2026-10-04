@@ -8,6 +8,7 @@ import type {
 } from "./types";
 
 export type ScoreSource = "none" | "eliminations" | "control";
+export type TeamPolicy = "free-for-all" | "two-teams";
 
 export interface ControlModePolicy {
   nodeCount: number;
@@ -17,6 +18,10 @@ export interface ControlModePolicy {
 
 export interface GameModePolicy {
   displayName: string;
+  category: "classic" | "cyberphunks";
+  description: string;
+  objective: string;
+  teamPolicy: TeamPolicy;
   roundDurationMs: number;
   suddenDeathAllowed: boolean;
   respawnDelayMs: number | null;
@@ -27,8 +32,26 @@ export interface GameModePolicy {
 }
 
 export const GAME_MODES: Readonly<Record<GameModeId, GameModePolicy>> = {
-  survival: {
-    displayName: "SURVIVAL",
+  "classic-deathmatch": {
+    displayName: "CLASSIC DEATHMATCH",
+    category: "classic",
+    description: "Free-for-all Bomberman rules. No respawns. Last player standing wins.",
+    objective: "LAST PLAYER STANDING",
+    teamPolicy: "free-for-all",
+    roundDurationMs: 240_000,
+    suddenDeathAllowed: true,
+    respawnDelayMs: null,
+    respawnShieldMs: 0,
+    scoreTarget: null,
+    scoreSource: "none",
+    control: null
+  },
+  "classic-team-deathmatch": {
+    displayName: "CLASSIC TEAM DEATHMATCH",
+    category: "classic",
+    description: "Two teams, classic bomb rules, no respawns. Eliminate the opposing team.",
+    objective: "LAST TEAM STANDING",
+    teamPolicy: "two-teams",
     roundDurationMs: 240_000,
     suddenDeathAllowed: true,
     respawnDelayMs: null,
@@ -39,6 +62,10 @@ export const GAME_MODES: Readonly<Record<GameModeId, GameModePolicy>> = {
   },
   "core-rush": {
     displayName: "CORE RUSH",
+    category: "cyberphunks",
+    description: "Respawn arena. Score eliminations and race to the target before time expires.",
+    objective: "REACH THE ELIMINATION TARGET",
+    teamPolicy: "free-for-all",
     roundDurationMs: 180_000,
     suddenDeathAllowed: false,
     respawnDelayMs: 1_500,
@@ -49,6 +76,10 @@ export const GAME_MODES: Readonly<Record<GameModeId, GameModePolicy>> = {
   },
   "grid-control": {
     displayName: "GRID CONTROL",
+    category: "cyberphunks",
+    description: "Capture live grid nodes, hold territory and build sync score while the arena stays active.",
+    objective: "CONTROL THE GRID",
+    teamPolicy: "free-for-all",
     roundDurationMs: 180_000,
     suddenDeathAllowed: false,
     respawnDelayMs: 1_500,
