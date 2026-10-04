@@ -22,6 +22,7 @@ import {
 } from "./spriteAtlas";
 
 const TILE = 48;
+const PREDICTION_TIMEOUT_MS = 360;
 const PLAYER_COLORS = [
   0x53f3ff,
   0xff4fd8,
@@ -46,6 +47,12 @@ interface PlayerWaypoint {
   facing: Facing;
 }
 
+interface PredictedTile {
+  x: number;
+  y: number;
+  queuedAtMs: number;
+}
+
 interface PlayerSpriteState {
   image: GameObjects.Image;
   x: number;
@@ -54,6 +61,7 @@ interface PlayerSpriteState {
   targetY: number;
   facing: Facing;
   waypoints: PlayerWaypoint[];
+  predictedTiles: PredictedTile[];
   movingUntilMs: number;
   alive: boolean;
   eliminatedAtMs: number | null;
@@ -155,7 +163,8 @@ export class SpriteAtlasLayer {
     const preferences = getVisualPreferences();
     const animated = preferences.ambientMotionEnabled && preferences.quality !== "low";
 
-    this.predictLocalMovement(state);
+    this.reconcileTimedOutPrediction(state, timeMs);
+    this.predictLocalMovement(state, timeMs);
     this.selection.clear();
 
     for (let index = 0; index < state.players.length; index++) {
@@ -257,33 +266,60 @@ export class SpriteAtlasLayer {
     }
   }
 
-  private predictLocalMovement(state: GameState): void {
+  private predictLocalMovement(state: GameState, timeMs: number): void {
     if (!this.selfId || !this.movementKeys) return;
     const player = state.players.find((candidate) => candidate.id === this.selfId);
     const visual = this.players.get(this.selfId);
-    if (!player?.alive || !visual || visual.waypoints.length > 0) return;
+    if (!player?.alive || !visual) return;
 
-    const authoritativeX = player.x * TILE + TILE / 2;
-    const authoritativeY = player.y * TILE + TILE / 2;
-    if (visual.x !== authoritativeX || visual.y !== authoritativeY) return;
+    // Keep at most two locally predicted tiles ahead. This is enough to hide a
+    // normal snapshot round-trip without allowing the client to run away from
+    // the authoritative simulation.
+    if (visual.predictedTiles.length >= 2 || visual.waypoints.length >= 2) return;
 
     const direction = this.heldDirection();
     if (!direction) return;
+
+    const base = visual.predictedTiles[visual.predictedTiles.length - 1] ?? {
+      x: player.x,
+      y: player.y,
+      queuedAtMs: timeMs
+    };
     const [dx, dy] = MOVE_DELTA[direction];
-    const x = player.x + dx;
-    const y = player.y + dy;
+    const x = base.x + dx;
+    const y = base.y + dy;
+
     if (x < 0 || y < 0 || x >= state.width || y >= state.height) return;
     if (state.tiles[indexOf(state, x, y)] !== "floor") return;
     if (state.cores.some((core) => core.x === x && core.y === y)) return;
     if (state.players.some((other) => other.alive && other.id !== player.id && other.x === x && other.y === y)) return;
 
     visual.facing = direction;
+    visual.predictedTiles.push({ x, y, queuedAtMs: timeMs });
     visual.waypoints.push({
       x: x * TILE + TILE / 2,
       y: y * TILE + TILE / 2,
       facing: direction
     });
-    visual.movingUntilMs = this.scene.time.now + tileDurationMs(player.speedTier);
+    visual.movingUntilMs = timeMs + tileDurationMs(player.speedTier) * visual.waypoints.length;
+  }
+
+  private reconcileTimedOutPrediction(state: GameState, timeMs: number): void {
+    if (!this.selfId) return;
+    const player = state.players.find((candidate) => candidate.id === this.selfId);
+    const visual = this.players.get(this.selfId);
+    const oldest = visual?.predictedTiles[0];
+    if (!player || !visual || !oldest) return;
+    if (timeMs - oldest.queuedAtMs < PREDICTION_TIMEOUT_MS) return;
+
+    // The authoritative server did not confirm the predicted step in time.
+    // Snap back only on this exceptional path; normal movement never waits.
+    visual.predictedTiles.length = 0;
+    visual.waypoints.length = 0;
+    visual.x = player.x * TILE + TILE / 2;
+    visual.y = player.y * TILE + TILE / 2;
+    visual.targetX = visual.x;
+    visual.targetY = visual.y;
   }
 
   private heldDirection(): Direction | null {
@@ -369,6 +405,7 @@ export class SpriteAtlasLayer {
           targetY,
           facing: "down",
           waypoints: [],
+          predictedTiles: [],
           movingUntilMs: 0,
           alive: player.alive,
           eliminatedAtMs: player.alive ? null : this.scene.time.now
@@ -376,7 +413,23 @@ export class SpriteAtlasLayer {
         continue;
       }
 
-      if (visual.targetX !== targetX || visual.targetY !== targetY) {
+      if (player.id === this.selfId && visual.predictedTiles.length > 0) {
+        const firstPredicted = visual.predictedTiles[0];
+        if (player.x === firstPredicted.x && player.y === firstPredicted.y) {
+          visual.predictedTiles.shift();
+          visual.targetX = targetX;
+          visual.targetY = targetY;
+        } else if (visual.targetX !== targetX || visual.targetY !== targetY) {
+          // Server moved us somewhere other than the predicted tile. Treat that
+          // as a rejection/correction and return to the authoritative position.
+          visual.predictedTiles.length = 0;
+          visual.waypoints.length = 0;
+          visual.x = targetX;
+          visual.y = targetY;
+          visual.targetX = targetX;
+          visual.targetY = targetY;
+        }
+      } else if (visual.targetX !== targetX || visual.targetY !== targetY) {
         const queuedTarget = visual.waypoints[visual.waypoints.length - 1];
         if (queuedTarget?.x === targetX && queuedTarget.y === targetY) {
           visual.targetX = targetX;
@@ -401,6 +454,7 @@ export class SpriteAtlasLayer {
       if (visual.alive && !player.alive) {
         visual.eliminatedAtMs = this.scene.time.now;
         visual.waypoints.length = 0;
+        visual.predictedTiles.length = 0;
       } else if (!visual.alive && player.alive) {
         visual.eliminatedAtMs = null;
         visual.x = targetX;
@@ -408,6 +462,7 @@ export class SpriteAtlasLayer {
         visual.targetX = targetX;
         visual.targetY = targetY;
         visual.waypoints.length = 0;
+        visual.predictedTiles.length = 0;
         visual.image.setVisible(true);
       }
       visual.alive = player.alive;
