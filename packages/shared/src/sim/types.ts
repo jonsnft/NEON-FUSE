@@ -27,6 +27,8 @@ export interface SimBlast {
   x: number;
   y: number;
   ttlMs: number;
+  ownerId?: string;
+  sourceCoreId?: string;
 }
 
 export interface SimPickup {
@@ -41,7 +43,10 @@ export interface PlayerMatchMetrics {
   spawnIndex: number;
   coresPlaced: number;
   pickupsCollected: Record<PickupKind, number>;
+  eliminations: number;
+  selfEliminations: number;
   eliminatedAtMs: number | null;
+  eliminatedByPlayerId: string | null;
 }
 
 export interface MatchMetrics {
