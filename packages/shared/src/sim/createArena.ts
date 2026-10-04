@@ -1,5 +1,5 @@
 import { GAME } from "../constants/game";
-import { pickupKindsForRules } from "../rules/catalog";
+import { gameModePolicyForRules, pickupKindsForRules } from "../rules/catalog";
 import { DEFAULT_GAME_RULES, type GameRules } from "../rules/types";
 import { distributePickups } from "./pickups";
 import type { GameState, SimPlayer, TileKind } from "./types";
@@ -69,12 +69,17 @@ export function createArena(
       id,
       x,
       y,
+      spawnX: x,
+      spawnY: y,
       alive: true,
+      respawnAtMs: null,
+      invulnerableUntilMs: 0,
       speedTier: 0,
       blastRange: GAME.initialBlastRange,
       coreCapacity: GAME.initialCoreCapacity
     };
   });
+  const mode = gameModePolicyForRules(rules);
 
   return {
     mapId: "grid-zero",
@@ -101,7 +106,7 @@ export function createArena(
       }))
     },
     elapsedMs: 0,
-    roundDurationMs: GAME.targetMatchSeconds * 1000,
+    roundDurationMs: mode.roundDurationMs,
     suddenDeathStartMs: GAME.suddenDeathStartSeconds * 1000,
     suddenDeathCursor: 0,
     nextCoreId: 1,
