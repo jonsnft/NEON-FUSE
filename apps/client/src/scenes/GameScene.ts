@@ -8,6 +8,7 @@ import {
   type Direction,
   type GameState
 } from "@neon-fuse/shared";
+import { CombatReadabilityLayer } from "../render/CombatReadabilityLayer";
 import { CyberpunkAssetLayer } from "../render/CyberpunkAssetLayer";
 import { NeonWorldRenderer } from "../render/NeonWorldRenderer";
 import { SpriteAtlasLayer } from "../render/SpriteAtlasLayer";
@@ -21,6 +22,7 @@ export class GameScene extends Scene {
   private state!: GameState;
   private worldRenderer!: NeonWorldRenderer;
   private assetLayer!: CyberpunkAssetLayer | SpriteAtlasLayer;
+  private combatLayer!: CombatReadabilityLayer;
   private hud!: MatchHud;
   private keys!: Record<string, Input.Keyboard.Key>;
   private nextMoveAt = 0;
@@ -39,6 +41,7 @@ export class GameScene extends Scene {
     this.assetLayer = SpriteAtlasLayer.isAvailable(this)
       ? new SpriteAtlasLayer(this)
       : new CyberpunkAssetLayer(this);
+    this.combatLayer = new CombatReadabilityLayer(this);
     this.hud = new MatchHud(this);
     this.hud.setArenaWidth(this.state.width * TILE);
 
@@ -59,12 +62,15 @@ export class GameScene extends Scene {
 
     this.worldRenderer.setState(this.state, LOCAL_PLAYER);
     this.assetLayer.setState(this.state, LOCAL_PLAYER);
+    this.combatLayer.setState(this.state);
     this.worldRenderer.render(0, 0);
     this.assetLayer.render(0, 0);
+    this.combatLayer.render(0);
     this.renderStatus();
 
     this.events.once("shutdown", () => {
       this.hud.destroy();
+      this.combatLayer.destroy();
       this.assetLayer.destroy();
       this.worldRenderer.destroy();
     });
@@ -76,6 +82,7 @@ export class GameScene extends Scene {
       this.hud.setArenaWidth(this.state.width * TILE);
       this.worldRenderer.clearState();
       this.assetLayer.clearState();
+      this.combatLayer.clearState();
     }
 
     if (Input.Keyboard.JustDown(this.keys.core)) {
@@ -93,8 +100,10 @@ export class GameScene extends Scene {
     tickSimulation(this.state, Math.min(delta, 100));
     this.worldRenderer.setState(this.state, LOCAL_PLAYER);
     this.assetLayer.setState(this.state, LOCAL_PLAYER);
+    this.combatLayer.setState(this.state);
     this.worldRenderer.render(time, delta);
     this.assetLayer.render(time, delta);
+    this.combatLayer.render(time);
     this.renderStatus();
   }
 
