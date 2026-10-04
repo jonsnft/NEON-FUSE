@@ -8,6 +8,7 @@ import {
   isLobbyConfigureRequest,
   placeCore,
   suddenDeathOrder,
+  targetPickupCount,
   tickSimulation
 } from "../src";
 
@@ -54,8 +55,11 @@ describe("lobby configuration", () => {
       modifierPresetId: "standard",
       pacePresetId: "standard"
     });
+    expect(noSpeed.pickups.length).toBeGreaterThan(2);
     expect(noSpeed.pickups.some((pickup) => pickup.kind === "speed")).toBe(false);
-    expect(noSpeed.pickups.map((pickup) => pickup.kind)).toEqual(["range", "capacity"]);
+    expect(new Set(noSpeed.pickups.map((pickup) => pickup.kind))).toEqual(
+      new Set(["range", "capacity"])
+    );
 
     const none = createOfficialArena("grid-zero", ["p1", "p2"], {
       itemPresetId: "no-items",
@@ -65,7 +69,7 @@ describe("lobby configuration", () => {
     expect(none.pickups).toHaveLength(0);
   });
 
-  it("scales pickup quantity deterministically with player count", () => {
+  it("scales pickup quantity deterministically with map density and player count", () => {
     const rules = {
       itemPresetId: "standard" as const,
       modifierPresetId: "standard" as const,
@@ -73,17 +77,17 @@ describe("lobby configuration", () => {
     };
     const players = (count: number) => Array.from({ length: count }, (_, index) => `p${index + 1}`);
 
-    const two = createOfficialArena("grid-zero", players(2), rules);
-    const four = createOfficialArena("grid-zero", players(4), rules);
-    const eight = createOfficialArena("grid-zero", players(8), rules);
+    for (const playerCount of [2, 4, 8]) {
+      const state = createOfficialArena("grid-zero", players(playerCount), rules);
+      const softCellCount = state.tiles.filter((tile) => tile === "soft").length;
+      expect(state.pickups).toHaveLength(targetPickupCount(softCellCount, playerCount, 3));
+      expect(new Set(state.pickups.map((pickup) => `${pickup.x},${pickup.y}`)).size).toBe(state.pickups.length);
+    }
 
-    expect(two.pickups).toHaveLength(3);
-    expect(four.pickups).toHaveLength(4);
-    expect(eight.pickups).toHaveLength(8);
-    expect(eight.pickups.map((pickup) => pickup.kind)).toEqual([
-      "range", "capacity", "speed", "range", "capacity", "speed", "range", "capacity"
-    ]);
-    expect(new Set(eight.pickups.map((pickup) => `${pickup.x},${pickup.y}`)).size).toBe(8);
+    const two = createOfficialArena("grid-zero", players(2), rules);
+    const eight = createOfficialArena("grid-zero", players(8), rules);
+    expect(two.pickups.length).toBeGreaterThan(3);
+    expect(eight.pickups.length).toBeGreaterThanOrEqual(two.pickups.length);
   });
 
   it("scales no-speed pickups without reintroducing speed", () => {
@@ -97,7 +101,8 @@ describe("lobby configuration", () => {
       }
     );
 
-    expect(state.pickups).toHaveLength(8);
+    const softCellCount = state.tiles.filter((tile) => tile === "soft").length;
+    expect(state.pickups).toHaveLength(targetPickupCount(softCellCount, 8, 2));
     expect(state.pickups.every((pickup) => pickup.kind === "range" || pickup.kind === "capacity")).toBe(true);
     expect(state.pickups.some((pickup) => pickup.kind === "speed")).toBe(false);
   });

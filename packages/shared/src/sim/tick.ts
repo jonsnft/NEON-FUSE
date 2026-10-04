@@ -34,7 +34,13 @@ export function tickSimulation(state: GameState, deltaMs: number): void {
     const cells = blastCells(state, core.x, core.y, core.blastRange);
     for (const [x, y] of cells) {
       if (!state.blasts.some((b) => b.x === x && b.y === y)) {
-        state.blasts.push({ x, y, ttlMs: BLAST_TTL_MS });
+        state.blasts.push({
+          x,
+          y,
+          ttlMs: BLAST_TTL_MS,
+          ownerId: core.ownerId,
+          sourceCoreId: core.id
+        });
       }
 
       const chained = state.cores.find((candidate) =>
@@ -49,8 +55,7 @@ export function tickSimulation(state: GameState, deltaMs: number): void {
       for (const player of state.players) {
         if (player.alive && player.x === x && player.y === y) {
           player.alive = false;
-          const metrics = metricsForPlayer(state, player.id);
-          if (metrics && metrics.eliminatedAtMs === null) metrics.eliminatedAtMs = state.elapsedMs;
+          recordElimination(state, player.id, core.ownerId);
         }
       }
     }
@@ -60,6 +65,22 @@ export function tickSimulation(state: GameState, deltaMs: number): void {
   applySuddenDeath(state);
   resolveRound(state);
   enforceRoundDeadline(state);
+}
+
+function recordElimination(state: GameState, victimId: string, sourceOwnerId: string): void {
+  const victimMetrics = metricsForPlayer(state, victimId);
+  if (!victimMetrics || victimMetrics.eliminatedAtMs !== null) return;
+
+  victimMetrics.eliminatedAtMs = state.elapsedMs;
+  victimMetrics.eliminatedByPlayerId = sourceOwnerId;
+
+  if (victimId === sourceOwnerId) {
+    victimMetrics.selfEliminations++;
+    return;
+  }
+
+  const sourceMetrics = metricsForPlayer(state, sourceOwnerId);
+  if (sourceMetrics) sourceMetrics.eliminations++;
 }
 
 export function resolveRound(state: GameState): void {

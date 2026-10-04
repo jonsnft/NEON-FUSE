@@ -37,7 +37,7 @@ describe("authoritative match metrics", () => {
     });
   });
 
-  it("records chain detonations and blast elimination timing", () => {
+  it("records chain detonations and self-elimination attribution", () => {
     const state = createOfficialArena("grid-zero", ["p1", "p2"], standardRules);
     state.players[0].x = 1;
     state.players[0].y = 1;
@@ -52,7 +52,26 @@ describe("authoritative match metrics", () => {
 
     expect(state.metrics.chainDetonations).toBe(1);
     expect(metricsForPlayer(state, "p1")?.eliminatedAtMs).toBe(50);
+    expect(metricsForPlayer(state, "p1")?.eliminatedByPlayerId).toBe("p1");
+    expect(metricsForPlayer(state, "p1")?.selfEliminations).toBe(1);
     expect(metricsForPlayer(state, "p2")?.eliminatedAtMs).toBeNull();
+  });
+
+  it("credits an opponent elimination to the detonating Core owner", () => {
+    const state = createOfficialArena("grid-zero", ["p1", "p2"], standardRules);
+    state.players[0].x = 1;
+    state.players[0].y = 2;
+    state.players[1].x = 2;
+    state.players[1].y = 1;
+    state.cores = [
+      { id: "core-a", ownerId: "p1", x: 1, y: 1, fuseMs: 0, blastRange: 2 }
+    ];
+
+    tickSimulation(state, 50);
+
+    expect(metricsForPlayer(state, "p1")?.eliminations).toBe(1);
+    expect(metricsForPlayer(state, "p2")?.eliminatedByPlayerId).toBe("p1");
+    expect(state.blasts.some((blast) => blast.ownerId === "p1" && blast.sourceCoreId === "core-a")).toBe(true);
   });
 
   it("records whether standard rules reach Sudden Death", () => {

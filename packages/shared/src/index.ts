@@ -6,6 +6,7 @@ export * from "./lobby/config";
 export * from "./rules/types";
 export * from "./rules/catalog";
 export * from "./sim/types";
+export * from "./sim/pickups";
 export * from "./sim/createArena";
 export * from "./sim/actions";
 export * from "./sim/tick";
