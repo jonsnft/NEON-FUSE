@@ -100,7 +100,7 @@ export class LobbyScene extends Scene {
 
   private renderHelp(): void {
     if (!this.connected) return;
-    this.status.setText("Q QUICK MATCH // 1-7 JOIN ROOM // CREATOR SELECTS & EXPLAINS MODE IN ROOM // S ITEMS");
+    this.status.setText("Q QUICK MATCH // 1-7 JOIN ROOM // CREATOR CONFIGURES MODE + AI BOTS IN ROOM // S ITEMS");
   }
 
   private renderRooms(): void {
@@ -112,12 +112,15 @@ export class LobbyScene extends Scene {
     this.list.setText(
       this.rooms.map((room, index) => {
         const phase = room.metadata?.phase ?? "waiting";
-        const players = room.metadata?.connectedPlayers ?? room.clients;
+        const humans = room.metadata?.connectedPlayers ?? room.clients;
+        const bots = room.metadata?.botCount ?? 0;
+        const total = humans + bots;
         const max = room.metadata?.maxPlayers ?? room.maxClients;
         const ready = room.metadata?.readyPlayers ?? 0;
         const map = room.metadata?.mapId ?? "grid-zero";
         const mode = modeLabel(room.metadata?.gameModeId);
-        return `[${index + 1}] ${room.roomId.slice(0, 8)}  ${phase.toUpperCase()}  ${players}/${max}  READY:${ready}\n    ${mode}  //  MAP:${map}`;
+        const ai = bots > 0 ? `  AI:${bots} ${String(room.metadata?.botDifficulty ?? "normal").toUpperCase()}` : "";
+        return `[${index + 1}] ${room.roomId.slice(0, 8)}  ${phase.toUpperCase()}  ${total}/${max}  READY:${ready}${ai}\n    ${mode}  //  MAP:${map}`;
       }).join("\n\n")
     );
   }
