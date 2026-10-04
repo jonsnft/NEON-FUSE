@@ -1,6 +1,7 @@
 import { GAME } from "../constants/game";
+import { gameModePolicyForRules, suddenDeathEnabledForRules } from "../rules/catalog";
 import type { GameState } from "./types";
-import { indexOf } from "./types";
+import { indexOf, scoreForPlayer } from "./types";
 
 export function suddenDeathOrder(width: number, height: number): Array<{ x: number; y: number }> {
   const cells: Array<{ x: number; y: number }> = [];
@@ -32,7 +33,7 @@ export function suddenDeathOrder(width: number, height: number): Array<{ x: numb
 export function applySuddenDeath(state: GameState): void {
   if (
     state.phase !== "playing" ||
-    state.rules.modifierPresetId === "no-sudden-death" ||
+    !suddenDeathEnabledForRules(state.rules) ||
     state.elapsedMs < state.suddenDeathStartMs
   ) return;
 
@@ -49,6 +50,7 @@ export function applySuddenDeath(state: GameState): void {
     for (const player of state.players) {
       if (player.alive && player.x === cell.x && player.y === cell.y) {
         player.alive = false;
+        player.respawnAtMs = null;
       }
     }
 
@@ -60,7 +62,17 @@ export function applySuddenDeath(state: GameState): void {
 
 export function enforceRoundDeadline(state: GameState): void {
   if (state.phase !== "playing" || state.elapsedMs < state.roundDurationMs) return;
-  const alive = state.players.filter((player) => player.alive);
+  const mode = gameModePolicyForRules(state.rules);
+
   state.phase = "finished";
+  if (mode.scoreTarget !== null) {
+    const scores = state.players.map((player) => ({ id: player.id, score: scoreForPlayer(state, player.id) }));
+    const best = Math.max(...scores.map(({ score }) => score));
+    const leaders = scores.filter(({ score }) => score === best);
+    state.winnerId = leaders.length === 1 ? leaders[0].id : null;
+    return;
+  }
+
+  const alive = state.players.filter((player) => player.alive);
   state.winnerId = alive.length === 1 ? alive[0].id : null;
 }
