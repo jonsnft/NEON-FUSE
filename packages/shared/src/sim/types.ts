@@ -4,9 +4,11 @@ import type { GameRules } from "../rules/types";
 export type TileKind = "floor" | "hard" | "soft";
 export type PickupKind = "range" | "capacity" | "speed";
 export type RoundPhase = "playing" | "finished";
+export type TeamId = "alpha" | "beta";
 
 export interface SimPlayer {
   id: string;
+  teamId: TeamId | null;
   x: number;
   y: number;
   spawnX: number;
@@ -91,6 +93,7 @@ export interface GameState {
   nextCoreId: number;
   phase: RoundPhase;
   winnerId: string | null;
+  winnerTeamId: TeamId | null;
 }
 
 export const indexOf = (state: Pick<GameState, "width">, x: number, y: number) =>
