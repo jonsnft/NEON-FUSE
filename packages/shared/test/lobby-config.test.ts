@@ -28,10 +28,18 @@ describe("lobby configuration", () => {
         mapId: "data-cross",
         gameModeId: "classic-team-deathmatch",
         maxPlayers: 6,
+        botCount: 2,
+        botDifficulty: "hard",
         itemPresetId: "no-speed",
         pacePresetId: "tactical"
       }
     })).toBe(true);
+
+    expect(isLobbyConfigureRequest({
+      type: "lobby.configure",
+      version: PROTOCOL_VERSION,
+      patch: { botDifficulty: "impossible" }
+    })).toBe(false);
 
     expect(isLobbyConfigureRequest({
       type: "lobby.configure",
@@ -58,8 +66,17 @@ describe("lobby configuration", () => {
     })).toBe(false);
   });
 
-  it("defaults new rooms to Classic Deathmatch", () => {
+  it("defaults new rooms to Classic Deathmatch without bots", () => {
     expect(DEFAULT_LOBBY_CONFIG.gameModeId).toBe("classic-deathmatch");
+    expect(DEFAULT_LOBBY_CONFIG.botCount).toBe(0);
+    expect(DEFAULT_LOBBY_CONFIG.botDifficulty).toBe("normal");
+  });
+
+  it("keeps humans plus bots inside the configured player capacity", () => {
+    expect(applyLobbyConfigPatch(DEFAULT_LOBBY_CONFIG, { botCount: 7 }, 1)?.botCount).toBe(7);
+    expect(applyLobbyConfigPatch(DEFAULT_LOBBY_CONFIG, { botCount: 7 }, 2)).toBeNull();
+    expect(applyLobbyConfigPatch(DEFAULT_LOBBY_CONFIG, { botCount: 8 }, 0)).toBeNull();
+    expect(applyLobbyConfigPatch(DEFAULT_LOBBY_CONFIG, { botCount: 3, botDifficulty: "nightmare" }, 2)?.botDifficulty).toBe("nightmare");
   });
 
   it("rejects capacity below current connected players", () => {
