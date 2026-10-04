@@ -8,7 +8,7 @@ import {
   tickSimulation
 } from "../src";
 
-const rules = (gameModeId: "survival" | "core-rush") => ({
+const rules = (gameModeId: "classic-deathmatch" | "classic-team-deathmatch" | "core-rush") => ({
   gameModeId,
   itemPresetId: "standard" as const,
   modifierPresetId: "standard" as const,
@@ -35,15 +35,34 @@ function armElimination(state: ReturnType<typeof createOfficialArena>, ownerId: 
 }
 
 describe("game mode policies", () => {
-  it("keeps Survival as the last-signal-standing baseline", () => {
-    const state = createOfficialArena("grid-zero", ["p1", "p2"], rules("survival"));
+  it("keeps Classic Deathmatch as the last-player-standing baseline", () => {
+    const state = createOfficialArena("grid-zero", ["p1", "p2"], rules("classic-deathmatch"));
     armElimination(state, "p1", "p2");
 
     tickSimulation(state, 50);
 
     expect(state.phase).toBe("finished");
     expect(state.winnerId).toBe("p1");
+    expect(state.winnerTeamId).toBeNull();
     expect(state.players[1].respawnAtMs).toBeNull();
+  });
+
+  it("assigns two teams and ends Classic Team Deathmatch when one team remains", () => {
+    const state = createOfficialArena(
+      "grid-zero",
+      ["alpha-1", "beta-1", "alpha-2", "beta-2"],
+      rules("classic-team-deathmatch")
+    );
+
+    expect(state.players.map((player) => player.teamId)).toEqual(["alpha", "beta", "alpha", "beta"]);
+    state.players.find((player) => player.id === "beta-1")!.alive = false;
+    state.players.find((player) => player.id === "beta-2")!.alive = false;
+
+    tickSimulation(state, 50);
+
+    expect(state.phase).toBe("finished");
+    expect(state.winnerId).toBeNull();
+    expect(state.winnerTeamId).toBe("alpha");
   });
 
   it("reboots a Core Rush player with a temporary phase shield", () => {
@@ -98,6 +117,7 @@ describe("game mode policies", () => {
 
   it("disables pressure-block Sudden Death in Core Rush", () => {
     expect(suddenDeathEnabledForRules(rules("core-rush"))).toBe(false);
-    expect(suddenDeathEnabledForRules(rules("survival"))).toBe(true);
+    expect(suddenDeathEnabledForRules(rules("classic-deathmatch"))).toBe(true);
+    expect(suddenDeathEnabledForRules(rules("classic-team-deathmatch"))).toBe(true);
   });
 });
