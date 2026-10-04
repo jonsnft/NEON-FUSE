@@ -9,6 +9,7 @@ import {
   PACE_PRESET_IDS,
   PROTOCOL_VERSION,
   gameModePolicyForRules,
+  isRespawnMode,
   isSuddenDeath,
   playerById,
   remainingRoundMs,
@@ -395,13 +396,14 @@ export class OnlineGameScene extends Scene {
     const alive = this.state.players.filter((player) => player.alive).length;
     const total = this.state.players.length;
     const mode = gameModePolicyForRules(this.state.rules);
+    const scoreLabel = this.state.rules.gameModeId === "grid-control" ? "SYNC" : "SCORE";
 
     if (!self.alive) {
-      if (this.state.rules.gameModeId === "core-rush" && self.respawnAtMs !== null) {
+      if (isRespawnMode(this.state) && self.respawnAtMs !== null) {
         this.hud.show(
           "SIGNAL REBOOT",
           clock,
-          `SCORE ${scoreForPlayer(this.state, selfId)}/${mode.scoreTarget ?? "-"}\nMAP ${this.state.mapId}`,
+          `${scoreLabel} ${scoreForPlayer(this.state, selfId)}/${mode.scoreTarget ?? "-"}\nMAP ${this.state.mapId}`,
           "REBOOTING...   ESC LOBBY",
           "danger",
           rebootHudDetails(this.state, selfId)
@@ -420,12 +422,19 @@ export class OnlineGameScene extends Scene {
     }
 
     const primary = suddenDeath ? `${clock}  SUDDEN DEATH` : clock;
-    const modeLine = this.state.rules.gameModeId === "core-rush"
-      ? `CORE RUSH   SCORE ${scoreForPlayer(this.state, selfId)}/${mode.scoreTarget ?? "-"}`
-      : `YOU LIVE   ALIVE ${alive}/${total}`;
+    const modeLine = this.state.rules.gameModeId === "grid-control"
+      ? `GRID CONTROL   SYNC ${scoreForPlayer(this.state, selfId)}/${mode.scoreTarget ?? "-"}`
+      : this.state.rules.gameModeId === "core-rush"
+        ? `CORE RUSH   SCORE ${scoreForPlayer(this.state, selfId)}/${mode.scoreTarget ?? "-"}`
+        : `YOU LIVE   ALIVE ${alive}/${total}`;
     const secondary = `${modeLine}\nMAP ${this.state.mapId}   PACE ${this.state.rules.pacePresetId.toUpperCase()}\nRANGE ${self.blastRange}   CORES ${self.coreCapacity}   SPEED ${self.speedTier}`;
+    const context = this.state.rules.gameModeId === "grid-control"
+      ? "ONLINE // GRID CONTROL"
+      : this.state.rules.gameModeId === "core-rush"
+        ? "ONLINE // CORE RUSH"
+        : "ONLINE MATCH";
     this.hud.show(
-      this.state.rules.gameModeId === "core-rush" ? "ONLINE // CORE RUSH" : "ONLINE MATCH",
+      context,
       primary,
       secondary,
       "WASD / ARROWS  MOVE\nSPACE  PLACE CORE\nESC  LOBBY",
