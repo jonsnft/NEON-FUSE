@@ -1,6 +1,7 @@
 import { GAME } from "../constants/game";
 import { DEFAULT_GAME_RULES, type GameRules } from "../rules/types";
 import { gameModePolicyForRules, pickupKindsForRules } from "../rules/catalog";
+import { createControlNodes } from "../sim/objectives";
 import { distributePickups } from "../sim/pickups";
 import type { SimPlayer, GameState } from "../sim/types";
 import type { CreatorMapDefinition } from "./types";
@@ -51,6 +52,13 @@ export function createArenaFromMap(
     pickupKindsForRules(rules)
   );
   const mode = gameModePolicyForRules(rules);
+  const controlNodes = createControlNodes(
+    mapValue.width,
+    mapValue.height,
+    mapValue.tiles,
+    players,
+    rules
+  );
 
   return {
     mapId: mapValue.id,
@@ -62,6 +70,7 @@ export function createArenaFromMap(
     cores: [],
     blasts: [],
     pickups,
+    controlNodes,
     metrics: {
       chainDetonations: 0,
       reachedSuddenDeath: false,
@@ -72,6 +81,8 @@ export function createArenaFromMap(
         pickupsCollected: { range: 0, capacity: 0, speed: 0 },
         eliminations: 0,
         selfEliminations: 0,
+        objectivePoints: 0,
+        nodesCaptured: 0,
         eliminatedAtMs: null,
         eliminatedByPlayerId: null
       }))
