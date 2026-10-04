@@ -5,6 +5,7 @@ export * from "./protocol/chat";
 export * from "./lobby/config";
 export * from "./rules/types";
 export * from "./rules/catalog";
+export * from "./bots/ai";
 export * from "./sim/types";
 export * from "./sim/pickups";
 export * from "./sim/objectives";
