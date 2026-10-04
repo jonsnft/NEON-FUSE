@@ -35,7 +35,7 @@ describe("authoritative multiplayer runtime", () => {
     await colyseus.cleanup();
   });
 
-  it("requires creator authorization and resets ready votes after config changes", async () => {
+  it("requires creator authorization, propagates game mode, and resets ready votes after config changes", async () => {
     const room = await colyseus.createRoom("match", { maxPlayers: 8 });
     const inspectableRoom = room as unknown as InspectableMatchRoom;
     const creator = await colyseus.connectTo(room);
@@ -44,15 +44,17 @@ describe("authoritative multiplayer runtime", () => {
     expect(room.maxClients).toBe(8);
     expect(inspectableRoom.creatorPlayerId).toBe(creator.sessionId);
     expect(inspectableRoom.config.mapId).toBe("grid-zero");
+    expect(inspectableRoom.config.gameModeId).toBe("survival");
     expect(inspectableRoom.config.pacePresetId).toBe("standard");
     expect(inspectableRoom.game).toBeNull();
 
     player2.send("lobby.configure", {
       type: "lobby.configure",
       version: PROTOCOL_VERSION,
-      patch: { pacePresetId: "tactical" }
+      patch: { gameModeId: "core-rush", pacePresetId: "tactical" }
     });
     await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(inspectableRoom.config.gameModeId).toBe("survival");
     expect(inspectableRoom.config.pacePresetId).toBe("standard");
 
     creator.send("intent", {
@@ -73,17 +75,19 @@ describe("authoritative multiplayer runtime", () => {
       patch: {
         maxPlayers: 4,
         mapId: "data-cross",
+        gameModeId: "core-rush",
         itemPresetId: "no-speed",
         modifierPresetId: "no-sudden-death",
         pacePresetId: "tactical"
       }
     });
 
-    await waitUntil(() => inspectableRoom.config.mapId === "data-cross");
+    await waitUntil(() => inspectableRoom.config.gameModeId === "core-rush");
     expect(inspectableRoom.maxClients).toBe(4);
     expect(inspectableRoom.config).toEqual({
       maxPlayers: 4,
       mapId: "data-cross",
+      gameModeId: "core-rush",
       itemPresetId: "no-speed",
       modifierPresetId: "no-sudden-death",
       pacePresetId: "tactical"
@@ -117,10 +121,12 @@ describe("authoritative multiplayer runtime", () => {
 
     expect(inspectableRoom.game?.mapId).toBe("data-cross");
     expect(inspectableRoom.game?.rules).toEqual({
+      gameModeId: "core-rush",
       itemPresetId: "no-speed",
       modifierPresetId: "no-sudden-death",
       pacePresetId: "tactical"
     });
+    expect(inspectableRoom.game?.roundDurationMs).toBe(180_000);
     expect(inspectableRoom.game?.pickups.some((pickup) => pickup.kind === "speed")).toBe(false);
     expect(inspectableRoom.game?.players).toHaveLength(2);
 

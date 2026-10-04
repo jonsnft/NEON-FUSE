@@ -1,3 +1,4 @@
+import { gameModePolicyForRules, suddenDeathEnabledForRules } from "../rules/catalog";
 import type { GameRules } from "../rules/types";
 
 export type TileKind = "floor" | "hard" | "soft";
@@ -8,7 +9,11 @@ export interface SimPlayer {
   id: string;
   x: number;
   y: number;
+  spawnX: number;
+  spawnY: number;
   alive: boolean;
+  respawnAtMs: number | null;
+  invulnerableUntilMs: number;
   speedTier: number;
   blastRange: number;
   coreCapacity: number;
@@ -89,10 +94,16 @@ export const metricsForPlayer = (
   playerId: string
 ): PlayerMatchMetrics | undefined => state.metrics.players.find((metrics) => metrics.playerId === playerId);
 
+export const scoreForPlayer = (state: GameState, playerId: string): number =>
+  metricsForPlayer(state, playerId)?.eliminations ?? 0;
+
 export const remainingRoundMs = (state: GameState): number =>
   Math.max(0, state.roundDurationMs - state.elapsedMs);
 
 export const isSuddenDeath = (state: GameState): boolean =>
   state.phase === "playing" &&
-  state.rules.modifierPresetId !== "no-sudden-death" &&
+  suddenDeathEnabledForRules(state.rules) &&
   state.elapsedMs >= state.suddenDeathStartMs;
+
+export const isRespawnMode = (state: GameState): boolean =>
+  gameModePolicyForRules(state.rules).respawnDelayMs !== null;

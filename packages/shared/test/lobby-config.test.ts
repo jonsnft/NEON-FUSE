@@ -12,6 +12,13 @@ import {
   tickSimulation
 } from "../src";
 
+const survivalRules = {
+  gameModeId: "survival" as const,
+  itemPresetId: "standard" as const,
+  modifierPresetId: "standard" as const,
+  pacePresetId: "standard" as const
+};
+
 describe("lobby configuration", () => {
   it("validates allowlisted creator configuration requests", () => {
     expect(isLobbyConfigureRequest({
@@ -19,11 +26,18 @@ describe("lobby configuration", () => {
       version: PROTOCOL_VERSION,
       patch: {
         mapId: "data-cross",
+        gameModeId: "core-rush",
         maxPlayers: 6,
         itemPresetId: "no-speed",
         pacePresetId: "tactical"
       }
     })).toBe(true);
+
+    expect(isLobbyConfigureRequest({
+      type: "lobby.configure",
+      version: PROTOCOL_VERSION,
+      patch: { gameModeId: "deathmatch-plus" }
+    })).toBe(false);
 
     expect(isLobbyConfigureRequest({
       type: "lobby.configure",
@@ -51,9 +65,8 @@ describe("lobby configuration", () => {
 
   it("applies item presets to deterministic pickup creation", () => {
     const noSpeed = createOfficialArena("grid-zero", ["p1", "p2"], {
-      itemPresetId: "no-speed",
-      modifierPresetId: "standard",
-      pacePresetId: "standard"
+      ...survivalRules,
+      itemPresetId: "no-speed"
     });
     expect(noSpeed.pickups.length).toBeGreaterThan(2);
     expect(noSpeed.pickups.some((pickup) => pickup.kind === "speed")).toBe(false);
@@ -62,30 +75,24 @@ describe("lobby configuration", () => {
     );
 
     const none = createOfficialArena("grid-zero", ["p1", "p2"], {
-      itemPresetId: "no-items",
-      modifierPresetId: "standard",
-      pacePresetId: "standard"
+      ...survivalRules,
+      itemPresetId: "no-items"
     });
     expect(none.pickups).toHaveLength(0);
   });
 
   it("scales pickup quantity deterministically with map density and player count", () => {
-    const rules = {
-      itemPresetId: "standard" as const,
-      modifierPresetId: "standard" as const,
-      pacePresetId: "standard" as const
-    };
     const players = (count: number) => Array.from({ length: count }, (_, index) => `p${index + 1}`);
 
     for (const playerCount of [2, 4, 8]) {
-      const state = createOfficialArena("grid-zero", players(playerCount), rules);
+      const state = createOfficialArena("grid-zero", players(playerCount), survivalRules);
       const softCellCount = state.tiles.filter((tile) => tile === "soft").length;
       expect(state.pickups).toHaveLength(targetPickupCount(softCellCount, playerCount, 3));
       expect(new Set(state.pickups.map((pickup) => `${pickup.x},${pickup.y}`)).size).toBe(state.pickups.length);
     }
 
-    const two = createOfficialArena("grid-zero", players(2), rules);
-    const eight = createOfficialArena("grid-zero", players(8), rules);
+    const two = createOfficialArena("grid-zero", players(2), survivalRules);
+    const eight = createOfficialArena("grid-zero", players(8), survivalRules);
     expect(two.pickups.length).toBeGreaterThan(3);
     expect(eight.pickups.length).toBeGreaterThanOrEqual(two.pickups.length);
   });
@@ -94,11 +101,7 @@ describe("lobby configuration", () => {
     const state = createOfficialArena(
       "grid-zero",
       Array.from({ length: 8 }, (_, index) => `p${index + 1}`),
-      {
-        itemPresetId: "no-speed",
-        modifierPresetId: "standard",
-        pacePresetId: "standard"
-      }
+      { ...survivalRules, itemPresetId: "no-speed" }
     );
 
     const softCellCount = state.tiles.filter((tile) => tile === "soft").length;
@@ -108,17 +111,12 @@ describe("lobby configuration", () => {
   });
 
   it("resolves core fuse from the selected pace preset", () => {
-    const standard = createOfficialArena("grid-zero", ["p1", "p2"], {
-      itemPresetId: "standard",
-      modifierPresetId: "standard",
-      pacePresetId: "standard"
-    });
+    const standard = createOfficialArena("grid-zero", ["p1", "p2"], survivalRules);
     expect(placeCore(standard, "p1")).toBe(true);
     expect(standard.cores[0].fuseMs).toBe(1800);
 
     const tactical = createOfficialArena("grid-zero", ["p1", "p2"], {
-      itemPresetId: "standard",
-      modifierPresetId: "standard",
+      ...survivalRules,
       pacePresetId: "tactical"
     });
     expect(placeCore(tactical, "p1")).toBe(true);
@@ -127,9 +125,8 @@ describe("lobby configuration", () => {
 
   it("keeps hard round deadline while disabling sudden death contraction", () => {
     const state = createOfficialArena("grid-zero", ["p1", "p2"], {
-      itemPresetId: "standard",
-      modifierPresetId: "no-sudden-death",
-      pacePresetId: "standard"
+      ...survivalRules,
+      modifierPresetId: "no-sudden-death"
     });
     const first = suddenDeathOrder(state.width, state.height)[0];
     const before = state.tiles[indexOf(state, first.x, first.y)];

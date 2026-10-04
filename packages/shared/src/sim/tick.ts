@@ -1,5 +1,6 @@
-import type { GameState } from "./types";
-import { indexOf, metricsForPlayer, tileAt } from "./types";
+import { gameModePolicyForRules, suddenDeathEnabledForRules } from "../rules/catalog";
+import type { GameState, SimPlayer } from "./types";
+import { indexOf, metricsForPlayer, scoreForPlayer, tileAt } from "./types";
 import { applySuddenDeath, enforceRoundDeadline } from "./suddenDeath";
 
 const BLAST_TTL_MS = 260;
@@ -11,10 +12,9 @@ export function tickSimulation(state: GameState, deltaMs: number): void {
 
   if (state.phase !== "playing") return;
 
-  if (
-    state.rules.modifierPresetId !== "no-sudden-death" &&
-    state.elapsedMs >= state.suddenDeathStartMs
-  ) {
+  respawnDuePlayers(state);
+
+  if (suddenDeathEnabledForRules(state.rules) && state.elapsedMs >= state.suddenDeathStartMs) {
     state.metrics.reachedSuddenDeath = true;
   }
 
@@ -53,9 +53,13 @@ export function tickSimulation(state: GameState, deltaMs: number): void {
       }
 
       for (const player of state.players) {
-        if (player.alive && player.x === x && player.y === y) {
-          player.alive = false;
-          recordElimination(state, player.id, core.ownerId);
+        if (
+          player.alive &&
+          player.invulnerableUntilMs <= state.elapsedMs &&
+          player.x === x &&
+          player.y === y
+        ) {
+          eliminatePlayer(state, player, core.ownerId);
         }
       }
     }
@@ -67,29 +71,63 @@ export function tickSimulation(state: GameState, deltaMs: number): void {
   enforceRoundDeadline(state);
 }
 
-function recordElimination(state: GameState, victimId: string, sourceOwnerId: string): void {
-  const victimMetrics = metricsForPlayer(state, victimId);
-  if (!victimMetrics || victimMetrics.eliminatedAtMs !== null) return;
+function eliminatePlayer(state: GameState, player: SimPlayer, sourceOwnerId: string): void {
+  player.alive = false;
+  const mode = gameModePolicyForRules(state.rules);
+  player.respawnAtMs = mode.respawnDelayMs === null ? null : state.elapsedMs + mode.respawnDelayMs;
 
-  victimMetrics.eliminatedAtMs = state.elapsedMs;
-  victimMetrics.eliminatedByPlayerId = sourceOwnerId;
-
-  if (victimId === sourceOwnerId) {
-    victimMetrics.selfEliminations++;
-    return;
+  const victimMetrics = metricsForPlayer(state, player.id);
+  if (victimMetrics) {
+    victimMetrics.eliminatedAtMs = state.elapsedMs;
+    victimMetrics.eliminatedByPlayerId = sourceOwnerId;
+    if (player.id === sourceOwnerId) victimMetrics.selfEliminations++;
   }
 
-  const sourceMetrics = metricsForPlayer(state, sourceOwnerId);
-  if (sourceMetrics) sourceMetrics.eliminations++;
+  if (player.id !== sourceOwnerId) {
+    const sourceMetrics = metricsForPlayer(state, sourceOwnerId);
+    if (sourceMetrics) sourceMetrics.eliminations++;
+  }
+}
+
+function respawnDuePlayers(state: GameState): void {
+  const mode = gameModePolicyForRules(state.rules);
+  if (mode.respawnDelayMs === null) return;
+
+  for (const player of state.players) {
+    if (player.alive || player.respawnAtMs === null || state.elapsedMs < player.respawnAtMs) continue;
+    player.x = player.spawnX;
+    player.y = player.spawnY;
+    player.alive = true;
+    player.respawnAtMs = null;
+    player.invulnerableUntilMs = state.elapsedMs + mode.respawnShieldMs;
+  }
 }
 
 export function resolveRound(state: GameState): void {
   if (state.phase !== "playing" || state.players.length < 2) return;
-  const alive = state.players.filter((player) => player.alive);
-  if (alive.length <= 1) {
-    state.phase = "finished";
-    state.winnerId = alive[0]?.id ?? null;
+  const mode = gameModePolicyForRules(state.rules);
+
+  if (state.rules.gameModeId === "survival") {
+    const alive = state.players.filter((player) => player.alive);
+    if (alive.length <= 1) {
+      state.phase = "finished";
+      state.winnerId = alive[0]?.id ?? null;
+    }
+    return;
   }
+
+  if (mode.scoreTarget === null) return;
+  const scores = state.players.map((player) => ({
+    id: player.id,
+    score: scoreForPlayer(state, player.id)
+  }));
+  const best = Math.max(...scores.map(({ score }) => score));
+  if (best < mode.scoreTarget) return;
+  const leaders = scores.filter(({ score }) => score === best);
+  if (leaders.length !== 1) return;
+
+  state.phase = "finished";
+  state.winnerId = leaders[0].id;
 }
 
 function blastCells(state: GameState, originX: number, originY: number, range: number): Array<[number, number]> {
