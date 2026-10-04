@@ -1,8 +1,7 @@
-import { GameObjects, Input, Scene } from "phaser";
+import { GameObjects, Scene } from "phaser";
 import {
   cosmeticById,
   indexOf,
-  type Direction,
   type GameState,
   type PlayerPresentation,
   type SimCore,
@@ -22,7 +21,6 @@ import {
 } from "./spriteAtlas";
 
 const TILE = 48;
-const PREDICTION_TIMEOUT_MS = 360;
 const PLAYER_COLORS = [
   0x53f3ff,
   0xff4fd8,
@@ -34,25 +32,6 @@ const PLAYER_COLORS = [
   0xffffff
 ] as const;
 
-const MOVE_DELTA: Record<Direction, readonly [number, number]> = {
-  up: [0, -1],
-  down: [0, 1],
-  left: [-1, 0],
-  right: [1, 0]
-};
-
-interface PlayerWaypoint {
-  x: number;
-  y: number;
-  facing: Facing;
-}
-
-interface PredictedTile {
-  x: number;
-  y: number;
-  queuedAtMs: number;
-}
-
 interface PlayerSpriteState {
   image: GameObjects.Image;
   x: number;
@@ -60,8 +39,6 @@ interface PlayerSpriteState {
   targetX: number;
   targetY: number;
   facing: Facing;
-  waypoints: PlayerWaypoint[];
-  predictedTiles: PredictedTile[];
   movingUntilMs: number;
   alive: boolean;
   eliminatedAtMs: number | null;
@@ -87,14 +64,6 @@ const teamColor = (teamId?: string | null): number | null => {
   return null;
 };
 
-const tileDurationMs = (speedTier: number): number => Math.max(82, 150 - speedTier * 14);
-
-const moveToward = (current: number, target: number, distance: number): number => {
-  const delta = target - current;
-  if (Math.abs(delta) <= distance) return target;
-  return current + Math.sign(delta) * distance;
-};
-
 export class SpriteAtlasLayer {
   static isAvailable(scene: Scene): boolean {
     return scene.textures.exists(PRODUCTION_ATLAS_KEY);
@@ -108,7 +77,6 @@ export class SpriteAtlasLayer {
   private readonly cores = new Map<string, CoreSpriteState>();
   private readonly pickups = new Map<string, GameObjects.Image>();
   private readonly selection: GameObjects.Graphics;
-  private readonly movementKeys: Record<string, Input.Keyboard.Key> | null;
   private tileWidth = 0;
   private tileHeight = 0;
   private tileMapId = "";
@@ -116,18 +84,6 @@ export class SpriteAtlasLayer {
 
   constructor(private readonly scene: Scene) {
     this.selection = scene.add.graphics().setDepth(2.6);
-    this.movementKeys = scene.input.keyboard
-      ? scene.input.keyboard.addKeys({
-          up: Input.Keyboard.KeyCodes.UP,
-          down: Input.Keyboard.KeyCodes.DOWN,
-          left: Input.Keyboard.KeyCodes.LEFT,
-          right: Input.Keyboard.KeyCodes.RIGHT,
-          w: Input.Keyboard.KeyCodes.W,
-          s: Input.Keyboard.KeyCodes.S,
-          a: Input.Keyboard.KeyCodes.A,
-          d: Input.Keyboard.KeyCodes.D
-        }) as Record<string, Input.Keyboard.Key>
-      : null;
   }
 
   setState(
@@ -162,9 +118,8 @@ export class SpriteAtlasLayer {
 
     const preferences = getVisualPreferences();
     const animated = preferences.ambientMotionEnabled && preferences.quality !== "low";
+    const follow = 1 - Math.exp(-Math.max(0, deltaMs) / 42);
 
-    this.reconcileTimedOutPrediction(state, timeMs);
-    this.predictLocalMovement(state, timeMs);
     this.selection.clear();
 
     for (let index = 0; index < state.players.length; index++) {
@@ -172,19 +127,8 @@ export class SpriteAtlasLayer {
       const visual = this.players.get(player.id);
       if (!visual) continue;
 
-      const waypoint = visual.waypoints[0];
-      if (waypoint) {
-        visual.facing = waypoint.facing;
-        const pixelsPerMs = TILE / tileDurationMs(player.speedTier);
-        const distance = Math.max(0, deltaMs) * pixelsPerMs;
-        visual.x = moveToward(visual.x, waypoint.x, distance);
-        visual.y = moveToward(visual.y, waypoint.y, distance);
-
-        if (visual.x === waypoint.x && visual.y === waypoint.y) {
-          visual.waypoints.shift();
-          if (visual.waypoints[0]) visual.facing = visual.waypoints[0].facing;
-        }
-      }
+      visual.x += (visual.targetX - visual.x) * follow;
+      visual.y += (visual.targetY - visual.y) * follow;
       visual.image.setPosition(visual.x, visual.y);
 
       const variant = avatarVariant(this.presentations[player.id]);
@@ -194,7 +138,7 @@ export class SpriteAtlasLayer {
 
       if (player.alive) {
         visual.image.setVisible(true);
-        const moving = visual.waypoints.length > 0 || timeMs < visual.movingUntilMs;
+        const moving = timeMs < visual.movingUntilMs;
         visual.image.setFrame(playerFrame(variant, visual.facing, moving, timeMs, animated));
 
         this.selection.fillStyle(identityColor, 0.95);
@@ -266,83 +210,6 @@ export class SpriteAtlasLayer {
     }
   }
 
-  private predictLocalMovement(state: GameState, timeMs: number): void {
-    if (!this.selfId || !this.movementKeys) return;
-    const player = state.players.find((candidate) => candidate.id === this.selfId);
-    const visual = this.players.get(this.selfId);
-    if (!player?.alive || !visual) return;
-
-    // Keep at most two locally predicted tiles ahead. This is enough to hide a
-    // normal snapshot round-trip without allowing the client to run away from
-    // the authoritative simulation.
-    if (visual.predictedTiles.length >= 2 || visual.waypoints.length >= 2) return;
-
-    const direction = this.heldDirection();
-    if (!direction) return;
-
-    const base = visual.predictedTiles[visual.predictedTiles.length - 1] ?? {
-      x: player.x,
-      y: player.y,
-      queuedAtMs: timeMs
-    };
-    const [dx, dy] = MOVE_DELTA[direction];
-    const x = base.x + dx;
-    const y = base.y + dy;
-
-    if (x < 0 || y < 0 || x >= state.width || y >= state.height) return;
-    if (state.tiles[indexOf(state, x, y)] !== "floor") return;
-    if (state.cores.some((core) => core.x === x && core.y === y)) return;
-    if (state.players.some((other) => other.alive && other.id !== player.id && other.x === x && other.y === y)) return;
-
-    visual.facing = direction;
-    visual.predictedTiles.push({ x, y, queuedAtMs: timeMs });
-    visual.waypoints.push({
-      x: x * TILE + TILE / 2,
-      y: y * TILE + TILE / 2,
-      facing: direction
-    });
-    visual.movingUntilMs = timeMs + tileDurationMs(player.speedTier) * visual.waypoints.length;
-  }
-
-  private reconcileTimedOutPrediction(state: GameState, timeMs: number): void {
-    if (!this.selfId) return;
-    const player = state.players.find((candidate) => candidate.id === this.selfId);
-    const visual = this.players.get(this.selfId);
-    const oldest = visual?.predictedTiles[0];
-    if (!player || !visual || !oldest) return;
-    if (timeMs - oldest.queuedAtMs < PREDICTION_TIMEOUT_MS) return;
-
-    // The authoritative server did not confirm the predicted step in time.
-    // Snap back only on this exceptional path; normal movement never waits.
-    visual.predictedTiles.length = 0;
-    visual.waypoints.length = 0;
-    visual.x = player.x * TILE + TILE / 2;
-    visual.y = player.y * TILE + TILE / 2;
-    visual.targetX = visual.x;
-    visual.targetY = visual.y;
-  }
-
-  private heldDirection(): Direction | null {
-    const keys = this.movementKeys;
-    if (!keys) return null;
-    const candidates: Array<{ direction: Direction; timeDown: number }> = [];
-    const pushIfDown = (direction: Direction, key: Input.Keyboard.Key): void => {
-      if (key.isDown) candidates.push({ direction, timeDown: key.timeDown });
-    };
-
-    pushIfDown("up", keys.up);
-    pushIfDown("up", keys.w);
-    pushIfDown("down", keys.down);
-    pushIfDown("down", keys.s);
-    pushIfDown("left", keys.left);
-    pushIfDown("left", keys.a);
-    pushIfDown("right", keys.right);
-    pushIfDown("right", keys.d);
-
-    candidates.sort((a, b) => b.timeDown - a.timeDown);
-    return candidates[0]?.direction ?? null;
-  }
-
   private syncTiles(state: GameState): void {
     const geometryChanged = this.tileWidth !== state.width || this.tileHeight !== state.height;
     if (geometryChanged) {
@@ -404,8 +271,6 @@ export class SpriteAtlasLayer {
           targetX,
           targetY,
           facing: "down",
-          waypoints: [],
-          predictedTiles: [],
           movingUntilMs: 0,
           alive: player.alive,
           eliminatedAtMs: player.alive ? null : this.scene.time.now
@@ -413,56 +278,17 @@ export class SpriteAtlasLayer {
         continue;
       }
 
-      if (player.id === this.selfId && visual.predictedTiles.length > 0) {
-        const firstPredicted = visual.predictedTiles[0];
-        if (player.x === firstPredicted.x && player.y === firstPredicted.y) {
-          visual.predictedTiles.shift();
-          visual.targetX = targetX;
-          visual.targetY = targetY;
-        } else if (visual.targetX !== targetX || visual.targetY !== targetY) {
-          // Server moved us somewhere other than the predicted tile. Treat that
-          // as a rejection/correction and return to the authoritative position.
-          visual.predictedTiles.length = 0;
-          visual.waypoints.length = 0;
-          visual.x = targetX;
-          visual.y = targetY;
-          visual.targetX = targetX;
-          visual.targetY = targetY;
-        }
-      } else if (visual.targetX !== targetX || visual.targetY !== targetY) {
-        const queuedTarget = visual.waypoints[visual.waypoints.length - 1];
-        if (queuedTarget?.x === targetX && queuedTarget.y === targetY) {
-          visual.targetX = targetX;
-          visual.targetY = targetY;
-        } else {
-          const tileDistance = (Math.abs(targetX - visual.targetX) + Math.abs(targetY - visual.targetY)) / TILE;
-          if (tileDistance !== 1 || visual.waypoints.length >= 4) {
-            visual.x = targetX;
-            visual.y = targetY;
-            visual.waypoints.length = 0;
-          } else {
-            const facing = inferFacing(visual.targetX, visual.targetY, targetX, targetY, visual.facing);
-            visual.waypoints.push({ x: targetX, y: targetY, facing });
-            if (visual.waypoints.length === 1) visual.facing = facing;
-            visual.movingUntilMs = this.scene.time.now + tileDurationMs(player.speedTier);
-          }
-          visual.targetX = targetX;
-          visual.targetY = targetY;
-        }
+      if (visual.targetX !== targetX || visual.targetY !== targetY) {
+        visual.facing = inferFacing(visual.targetX, visual.targetY, targetX, targetY, visual.facing);
+        visual.movingUntilMs = this.scene.time.now + 130;
+        visual.targetX = targetX;
+        visual.targetY = targetY;
       }
 
       if (visual.alive && !player.alive) {
         visual.eliminatedAtMs = this.scene.time.now;
-        visual.waypoints.length = 0;
-        visual.predictedTiles.length = 0;
       } else if (!visual.alive && player.alive) {
         visual.eliminatedAtMs = null;
-        visual.x = targetX;
-        visual.y = targetY;
-        visual.targetX = targetX;
-        visual.targetY = targetY;
-        visual.waypoints.length = 0;
-        visual.predictedTiles.length = 0;
         visual.image.setVisible(true);
       }
       visual.alive = player.alive;
