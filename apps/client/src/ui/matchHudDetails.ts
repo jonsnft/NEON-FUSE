@@ -55,6 +55,7 @@ export function playingHudDetails(
       ? [
           `CORES PLACED  ${metrics.coresPlaced}`,
           `PICKUPS  ${pickupTotal(metrics.pickupsCollected)}`,
+          `ELIMS  ${metrics.eliminations}`,
           `MATCH CHAINS  ${state.metrics.chainDetonations}`
         ]
       : []
@@ -77,6 +78,8 @@ export function finishedHudDetails(state: GameState, playerId?: string): HudDeta
     ? [
         `YOUR CORES  ${metrics.coresPlaced}`,
         `YOUR PICKUPS  ${pickupTotal(metrics.pickupsCollected)}`,
+        `YOUR ELIMS  ${metrics.eliminations}`,
+        metrics.selfEliminations > 0 ? `SELF ELIMS  ${metrics.selfEliminations}` : "SELF ELIMS  0",
         `MATCH CHAINS  ${state.metrics.chainDetonations}`,
         state.metrics.reachedSuddenDeath ? "SUDDEN DEATH  REACHED" : "SUDDEN DEATH  NOT REACHED"
       ]
