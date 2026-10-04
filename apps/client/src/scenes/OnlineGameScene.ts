@@ -300,8 +300,10 @@ export class OnlineGameScene extends Scene {
 
     if (status === "finished" && previous?.phase === "playing") {
       const selfId = this.connection.playerId;
-      if (!game.winnerId) this.sfx.draw();
-      else if (game.winnerId === selfId) this.sfx.victory();
+      const self = selfId ? playerById(game, selfId) : undefined;
+      const teamWin = Boolean(self?.teamId && game.winnerTeamId === self.teamId);
+      if (!game.winnerId && !game.winnerTeamId) this.sfx.draw();
+      else if (game.winnerId === selfId || teamWin) this.sfx.victory();
       else this.sfx.defeat();
     }
 
@@ -334,9 +336,10 @@ export class OnlineGameScene extends Scene {
         this.snapshot.readyPlayerIds.length === this.snapshot.connectedPlayers;
       const config = this.snapshot.config;
       const mapName = OFFICIAL_MAPS[config.mapId].displayName.toUpperCase();
-      const modeName = GAME_MODES[config.gameModeId].displayName;
+      const mode = GAME_MODES[config.gameModeId];
+      const modeName = mode.displayName;
       const primary = `${this.snapshot.connectedPlayers}/${config.maxPlayers} PLAYERS   ${this.snapshot.readyPlayerIds.length}/${this.snapshot.connectedPlayers} READY`;
-      const secondary = `MODE ${modeName}   MAP ${mapName}\nITEMS ${config.itemPresetId.toUpperCase()}   MOD ${config.modifierPresetId.toUpperCase()}   PACE ${config.pacePresetId.toUpperCase()}${isCreator ? "   CREATOR" : ""}`;
+      const secondary = `MODE ${modeName}   MAP ${mapName}\n${mode.objective} — ${mode.description}\nITEMS ${config.itemPresetId.toUpperCase()}   MOD ${config.modifierPresetId.toUpperCase()}   PACE ${config.pacePresetId.toUpperCase()}${isCreator ? "   CREATOR" : ""}`;
 
       let controls: string;
       if (isCreator) {
@@ -356,23 +359,29 @@ export class OnlineGameScene extends Scene {
         allReady ? "success" : "normal",
         {
           objective: isCreator
-            ? `SHAPE THE RUN — ${modeName} changes the win condition while Core/Blast rules stay stable.`
-            : `LOCK IN — ${modeName} is selected. Read the rules, then adapt once the grid goes live.`
+            ? `SELECT MODE WITH O — ${mode.description}`
+            : `${modeName} — ${mode.description}`
         }
       );
       return;
     }
 
     if (this.snapshot.status === "finished") {
-      const outcome = this.state?.winnerId
-        ? this.state.winnerId === selfId ? "ROUND WON" : "ROUND LOST"
-        : "ROUND DRAW";
-      const voted = selfId ? this.snapshot.rematchPlayerIds.includes(selfId) : false;
       const state = this.state;
+      const self = selfId && state ? playerById(state, selfId) : undefined;
+      const teamWin = Boolean(self?.teamId && state?.winnerTeamId === self.teamId);
+      const hasWinner = Boolean(state?.winnerId || state?.winnerTeamId);
+      const outcome = !hasWinner
+        ? "ROUND DRAW"
+        : state?.winnerId === selfId || teamWin
+          ? "ROUND WON"
+          : "ROUND LOST";
+      const voted = selfId ? this.snapshot.rematchPlayerIds.includes(selfId) : false;
       const alive = state?.players.filter((player) => player.alive).length ?? 0;
       const total = state?.players.length ?? 0;
       const modeName = state ? GAME_MODES[state.rules.gameModeId].displayName : "-";
-      const secondary = `MODE ${modeName}   MAP ${state?.mapId ?? "-"}\nSURVIVORS ${alive}/${total}\nITEMS ${state?.rules.itemPresetId ?? "-"}   PACE ${state?.rules.pacePresetId ?? "-"}`;
+      const teamResult = state?.winnerTeamId ? `   WINNER TEAM ${state.winnerTeamId.toUpperCase()}` : "";
+      const secondary = `MODE ${modeName}${teamResult}   MAP ${state?.mapId ?? "-"}\nSURVIVORS ${alive}/${total}\nITEMS ${state?.rules.itemPresetId ?? "-"}   PACE ${state?.rules.pacePresetId ?? "-"}`;
       this.hud.show(
         "ROUND COMPLETE",
         outcome,
@@ -426,13 +435,17 @@ export class OnlineGameScene extends Scene {
       ? `GRID CONTROL   SYNC ${scoreForPlayer(this.state, selfId)}/${mode.scoreTarget ?? "-"}`
       : this.state.rules.gameModeId === "core-rush"
         ? `CORE RUSH   SCORE ${scoreForPlayer(this.state, selfId)}/${mode.scoreTarget ?? "-"}`
-        : `YOU LIVE   ALIVE ${alive}/${total}`;
+        : this.state.rules.gameModeId === "classic-team-deathmatch"
+          ? `CLASSIC TEAM DM   TEAM ${self.teamId?.toUpperCase() ?? "-"}`
+          : `CLASSIC DEATHMATCH   ALIVE ${alive}/${total}`;
     const secondary = `${modeLine}\nMAP ${this.state.mapId}   PACE ${this.state.rules.pacePresetId.toUpperCase()}\nRANGE ${self.blastRange}   CORES ${self.coreCapacity}   SPEED ${self.speedTier}`;
     const context = this.state.rules.gameModeId === "grid-control"
       ? "ONLINE // GRID CONTROL"
       : this.state.rules.gameModeId === "core-rush"
         ? "ONLINE // CORE RUSH"
-        : "ONLINE MATCH";
+        : this.state.rules.gameModeId === "classic-team-deathmatch"
+          ? "ONLINE // CLASSIC TEAM DEATHMATCH"
+          : "ONLINE // CLASSIC DEATHMATCH";
     this.hud.show(
       context,
       primary,
