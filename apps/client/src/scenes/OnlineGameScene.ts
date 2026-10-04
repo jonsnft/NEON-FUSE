@@ -18,6 +18,7 @@ import {
   type MatchSnapshot
 } from "@neon-fuse/shared";
 import { MatchConnection } from "../net/MatchConnection";
+import { CombatReadabilityLayer } from "../render/CombatReadabilityLayer";
 import { CyberpunkAssetLayer } from "../render/CyberpunkAssetLayer";
 import { NeonWorldRenderer } from "../render/NeonWorldRenderer";
 import { SpriteAtlasLayer } from "../render/SpriteAtlasLayer";
@@ -44,6 +45,7 @@ export class OnlineGameScene extends Scene {
   private connection = new MatchConnection();
   private worldRenderer!: NeonWorldRenderer;
   private assetLayer!: CyberpunkAssetLayer | SpriteAtlasLayer;
+  private combatLayer!: CombatReadabilityLayer;
   private hud!: MatchHud;
   private chat!: LobbyChat;
   private keys!: Record<string, Input.Keyboard.Key>;
@@ -72,6 +74,7 @@ export class OnlineGameScene extends Scene {
     this.assetLayer = SpriteAtlasLayer.isAvailable(this)
       ? new SpriteAtlasLayer(this)
       : new CyberpunkAssetLayer(this);
+    this.combatLayer = new CombatReadabilityLayer(this);
     this.hud = new MatchHud(this);
     this.hud.show("NETWORK", "CONNECTING", "Establishing match session...", "ESC  LOBBY");
 
@@ -106,6 +109,7 @@ export class OnlineGameScene extends Scene {
     this.events.once("shutdown", () => {
       this.chat.destroy();
       this.hud.destroy();
+      this.combatLayer.destroy();
       this.assetLayer.destroy();
       this.worldRenderer.destroy();
       void this.connection.disconnect();
@@ -128,6 +132,7 @@ export class OnlineGameScene extends Scene {
   update(time: number, delta: number): void {
     this.worldRenderer.render(time, delta);
     this.assetLayer.render(time, delta);
+    this.combatLayer.render(time);
     if (this.chat.isTyping) return;
 
     if (Input.Keyboard.JustDown(this.keys.lobby)) {
@@ -254,6 +259,7 @@ export class OnlineGameScene extends Scene {
       this.hud.setArenaWidth(0);
       this.worldRenderer.clearState();
       this.assetLayer.clearState();
+      this.combatLayer.clearState();
       this.chat.setEnabled(true);
       this.renderStatus();
       return;
@@ -273,6 +279,7 @@ export class OnlineGameScene extends Scene {
       this.connection.playerId ?? undefined,
       snapshot.presentations
     );
+    this.combatLayer.setState(this.state);
     this.previousGame = structuredClone(snapshot.game);
     this.renderStatus();
   }
