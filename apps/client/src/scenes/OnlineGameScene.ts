@@ -1,14 +1,18 @@
 import { Input, Scene } from "phaser";
 import {
+  GAME_MODE_IDS,
+  GAME_MODES,
   ITEM_PRESET_IDS,
   MODIFIER_PRESET_IDS,
   OFFICIAL_MAP_IDS,
   OFFICIAL_MAPS,
   PACE_PRESET_IDS,
   PROTOCOL_VERSION,
+  gameModePolicyForRules,
   isSuddenDeath,
   playerById,
   remainingRoundMs,
+  scoreForPlayer,
   type Direction,
   type GameState,
   type MatchSnapshot
@@ -24,6 +28,7 @@ import { MatchHud } from "../ui/MatchHud";
 import {
   finishedHudDetails,
   playingHudDetails,
+  rebootHudDetails,
   spectatingHudDetails
 } from "../ui/matchHudDetails";
 
@@ -85,6 +90,7 @@ export class OnlineGameScene extends Scene {
       start: Input.Keyboard.KeyCodes.ENTER,
       mapOrRematch: Input.Keyboard.KeyCodes.M,
       players: Input.Keyboard.KeyCodes.P,
+      mode: Input.Keyboard.KeyCodes.O,
       items: Input.Keyboard.KeyCodes.I,
       modifier: Input.Keyboard.KeyCodes.G,
       pace: Input.Keyboard.KeyCodes.F,
@@ -211,6 +217,13 @@ export class OnlineGameScene extends Scene {
       this.connection.configureLobby({ maxPlayers: next });
     }
 
+    if (Input.Keyboard.JustDown(this.keys.mode)) {
+      const index = GAME_MODE_IDS.indexOf(config.gameModeId);
+      this.connection.configureLobby({
+        gameModeId: GAME_MODE_IDS[(index + 1) % GAME_MODE_IDS.length]
+      });
+    }
+
     if (Input.Keyboard.JustDown(this.keys.items)) {
       const index = ITEM_PRESET_IDS.indexOf(config.itemPresetId);
       this.connection.configureLobby({
@@ -313,13 +326,14 @@ export class OnlineGameScene extends Scene {
         this.snapshot.readyPlayerIds.length === this.snapshot.connectedPlayers;
       const config = this.snapshot.config;
       const mapName = OFFICIAL_MAPS[config.mapId].displayName.toUpperCase();
+      const modeName = GAME_MODES[config.gameModeId].displayName;
       const primary = `${this.snapshot.connectedPlayers}/${config.maxPlayers} PLAYERS   ${this.snapshot.readyPlayerIds.length}/${this.snapshot.connectedPlayers} READY`;
-      const secondary = `MAP ${mapName}   ITEMS ${config.itemPresetId.toUpperCase()}   MOD ${config.modifierPresetId.toUpperCase()}   PACE ${config.pacePresetId.toUpperCase()}${isCreator ? "   CREATOR" : ""}`;
+      const secondary = `MODE ${modeName}   MAP ${mapName}\nITEMS ${config.itemPresetId.toUpperCase()}   MOD ${config.modifierPresetId.toUpperCase()}   PACE ${config.pacePresetId.toUpperCase()}${isCreator ? "   CREATOR" : ""}`;
 
       let controls: string;
       if (isCreator) {
         const start = allReady ? "ENTER START   " : "";
-        controls = `${start}M MAP   P PLAYERS   I ITEMS   G MOD   F PACE   ${ready ? "R UNREADY" : "R READY"}   T CHAT   ESC LOBBY`;
+        controls = `${start}O MODE   M MAP   P PLAYERS   I ITEMS   G MOD   F PACE\n${ready ? "R UNREADY" : "R READY"}   T CHAT   ESC LOBBY`;
       } else if (allReady) {
         controls = "ALL READY - WAITING FOR CREATOR   T CHAT   ESC LOBBY";
       } else {
@@ -334,8 +348,8 @@ export class OnlineGameScene extends Scene {
         allReady ? "success" : "normal",
         {
           objective: isCreator
-            ? "SHAPE THE RUN — choose map, item set and pace, then start when the room is ready."
-            : "LOCK IN — ready up, read the rules, then adapt once the grid goes live."
+            ? `SHAPE THE RUN — ${modeName} changes the win condition while Core/Blast rules stay stable.`
+            : `LOCK IN — ${modeName} is selected. Read the rules, then adapt once the grid goes live.`
         }
       );
       return;
@@ -349,7 +363,8 @@ export class OnlineGameScene extends Scene {
       const state = this.state;
       const alive = state?.players.filter((player) => player.alive).length ?? 0;
       const total = state?.players.length ?? 0;
-      const secondary = `MAP ${state?.mapId ?? "-"}\nSURVIVORS ${alive}/${total}\nITEMS ${state?.rules.itemPresetId ?? "-"}   MOD ${state?.rules.modifierPresetId ?? "-"}   PACE ${state?.rules.pacePresetId ?? "-"}`;
+      const modeName = state ? GAME_MODES[state.rules.gameModeId].displayName : "-";
+      const secondary = `MODE ${modeName}   MAP ${state?.mapId ?? "-"}\nSURVIVORS ${alive}/${total}\nITEMS ${state?.rules.itemPresetId ?? "-"}   PACE ${state?.rules.pacePresetId ?? "-"}`;
       this.hud.show(
         "ROUND COMPLETE",
         outcome,
@@ -372,23 +387,38 @@ export class OnlineGameScene extends Scene {
     const suddenDeath = isSuddenDeath(this.state);
     const alive = this.state.players.filter((player) => player.alive).length;
     const total = this.state.players.length;
+    const mode = gameModePolicyForRules(this.state.rules);
 
     if (!self.alive) {
-      this.hud.show(
-        "SIGNAL LOST",
-        suddenDeath ? `${clock}  SUDDEN DEATH` : clock,
-        `SPECTATING\nALIVE ${alive}/${total}\nMAP ${this.state.mapId}`,
-        "ESC  LOBBY",
-        "danger",
-        spectatingHudDetails(this.state)
-      );
+      if (this.state.rules.gameModeId === "core-rush" && self.respawnAtMs !== null) {
+        this.hud.show(
+          "SIGNAL REBOOT",
+          clock,
+          `SCORE ${scoreForPlayer(this.state, selfId)}/${mode.scoreTarget ?? "-"}\nMAP ${this.state.mapId}`,
+          "REBOOTING...   ESC LOBBY",
+          "danger",
+          rebootHudDetails(this.state, selfId)
+        );
+      } else {
+        this.hud.show(
+          "SIGNAL LOST",
+          suddenDeath ? `${clock}  SUDDEN DEATH` : clock,
+          `SPECTATING\nALIVE ${alive}/${total}\nMAP ${this.state.mapId}`,
+          "ESC  LOBBY",
+          "danger",
+          spectatingHudDetails(this.state)
+        );
+      }
       return;
     }
 
     const primary = suddenDeath ? `${clock}  SUDDEN DEATH` : clock;
-    const secondary = `YOU LIVE   ALIVE ${alive}/${total}\nMAP ${this.state.mapId}   PACE ${this.state.rules.pacePresetId.toUpperCase()}\nRANGE ${self.blastRange}   CORES ${self.coreCapacity}   SPEED ${self.speedTier}`;
+    const modeLine = this.state.rules.gameModeId === "core-rush"
+      ? `CORE RUSH   SCORE ${scoreForPlayer(this.state, selfId)}/${mode.scoreTarget ?? "-"}`
+      : `YOU LIVE   ALIVE ${alive}/${total}`;
+    const secondary = `${modeLine}\nMAP ${this.state.mapId}   PACE ${this.state.rules.pacePresetId.toUpperCase()}\nRANGE ${self.blastRange}   CORES ${self.coreCapacity}   SPEED ${self.speedTier}`;
     this.hud.show(
-      "ONLINE MATCH",
+      this.state.rules.gameModeId === "core-rush" ? "ONLINE // CORE RUSH" : "ONLINE MATCH",
       primary,
       secondary,
       "WASD / ARROWS  MOVE\nSPACE  PLACE CORE\nESC  LOBBY",
