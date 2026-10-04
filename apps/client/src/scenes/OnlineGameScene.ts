@@ -51,7 +51,6 @@ export class OnlineGameScene extends Scene {
   private hud!: MatchHud;
   private chat!: LobbyChat;
   private keys!: Record<string, Input.Keyboard.Key>;
-  private nextMoveAt = 0;
   private seq = 0;
   private connectionStatus = "CONNECTING";
   private roomId?: string;
@@ -195,17 +194,14 @@ export class OnlineGameScene extends Scene {
       });
     }
 
-    const direction = this.heldDirection();
-    const moveDelay = Math.max(55, 130 - self.speedTier * 15);
-
-    if (direction && time >= this.nextMoveAt) {
+    const direction = this.justPressedDirection();
+    if (direction) {
       this.connection.send({
         type: "player.move",
         version: PROTOCOL_VERSION,
         seq: ++this.seq,
         direction
       });
-      this.nextMoveAt = time + moveDelay;
     }
   }
 
@@ -328,11 +324,11 @@ export class OnlineGameScene extends Scene {
     }
   }
 
-  private heldDirection(): Direction | null {
-    if (this.keys.up.isDown || this.keys.w.isDown) return "up";
-    if (this.keys.down.isDown || this.keys.s.isDown) return "down";
-    if (this.keys.left.isDown || this.keys.a.isDown) return "left";
-    if (this.keys.right.isDown || this.keys.d.isDown) return "right";
+  private justPressedDirection(): Direction | null {
+    if (Input.Keyboard.JustDown(this.keys.up) || Input.Keyboard.JustDown(this.keys.w)) return "up";
+    if (Input.Keyboard.JustDown(this.keys.down) || Input.Keyboard.JustDown(this.keys.s)) return "down";
+    if (Input.Keyboard.JustDown(this.keys.left) || Input.Keyboard.JustDown(this.keys.a)) return "left";
+    if (Input.Keyboard.JustDown(this.keys.right) || Input.Keyboard.JustDown(this.keys.d)) return "right";
     return null;
   }
 
@@ -355,29 +351,61 @@ export class OnlineGameScene extends Scene {
       const mode = GAME_MODES[config.gameModeId];
       const modeName = mode.displayName;
       const totalPlayers = this.snapshot.connectedPlayers + config.botCount;
-      const primary = `${totalPlayers}/${config.maxPlayers} PLAYERS   ${this.snapshot.connectedPlayers} HUMAN   ${config.botCount} AI   ${this.snapshot.readyPlayerIds.length}/${this.snapshot.connectedPlayers} READY`;
-      const secondary = `MODE ${modeName}   MAP ${mapName}\n${mode.objective} — ${mode.description}\nAI ${config.botCount} / ${config.botDifficulty.toUpperCase()}   ITEMS ${config.itemPresetId.toUpperCase()}   MOD ${config.modifierPresetId.toUpperCase()}   PACE ${config.pacePresetId.toUpperCase()}${isCreator ? "   CREATOR" : ""}`;
+      const primary = `${totalPlayers}/${config.maxPlayers} PLAYERS   ${this.snapshot.readyPlayerIds.length}/${this.snapshot.connectedPlayers} HUMAN READY`;
+      const secondary = `${isCreator ? "YOU ARE THE CREATOR" : "WAITING FOR CREATOR"}\n${this.snapshot.connectedPlayers} HUMAN   ${config.botCount} AI`;
 
       let controls: string;
       if (isCreator) {
-        const start = allReady ? "ENTER START   " : "";
-        controls = `${start}O MODE   M MAP   P SLOTS   B AI COUNT   H AI LEVEL\nI ITEMS   G MOD   F PACE   ${ready ? "R UNREADY" : "R READY"}   T CHAT   ESC LOBBY`;
+        const start = allReady ? "ENTER  START MATCH\n" : "";
+        controls = `${start}${ready ? "R  UNREADY" : "R  READY"}   T  CHAT   ESC  LOBBY`;
       } else if (allReady) {
-        controls = "ALL READY - WAITING FOR CREATOR   T CHAT   ESC LOBBY";
+        controls = "ALL HUMANS READY — WAITING FOR CREATOR   T  CHAT   ESC  LOBBY";
       } else {
-        controls = `${ready ? "R UNREADY" : "R READY"}   T CHAT   ESC LOBBY`;
+        controls = `${ready ? "R  UNREADY" : "R  READY"}   T  CHAT   ESC  LOBBY`;
       }
 
       this.hud.show(
-        "NETWORK LOBBY",
+        "MATCH SETUP",
         primary,
         secondary,
         controls,
         allReady ? "success" : "normal",
         {
-          objective: isCreator
-            ? `B ADDS AI OPPONENTS / H CHANGES DIFFICULTY — ${mode.description}`
-            : `${modeName} — ${mode.description}`
+          objective: `${mode.objective} — ${mode.description}`,
+          items: [
+            {
+              glyph: "O",
+              name: "MODE",
+              current: modeName,
+              description: isCreator ? "O changes mode" : "Selected by creator"
+            },
+            {
+              glyph: "M",
+              name: "MAP",
+              current: mapName,
+              description: isCreator ? "M changes arena" : "Selected arena"
+            },
+            {
+              glyph: "B",
+              name: "AI OPPONENTS",
+              current: `${config.botCount} / ${config.botDifficulty.toUpperCase()}`,
+              description: isCreator ? "B count  •  H difficulty" : "Configured AI roster"
+            },
+            {
+              glyph: "P",
+              name: "PLAYER SLOTS",
+              current: `${totalPlayers}/${config.maxPlayers}`,
+              description: isCreator ? "P changes total capacity" : "Current lobby capacity"
+            },
+            {
+              glyph: "I",
+              name: "RULES",
+              current: config.itemPresetId.toUpperCase(),
+              description: isCreator
+                ? `I items  •  G ${config.modifierPresetId.toUpperCase()}  •  F ${config.pacePresetId.toUpperCase()}`
+                : `${config.modifierPresetId.toUpperCase()}  •  ${config.pacePresetId.toUpperCase()}`
+            }
+          ]
         }
       );
       return;
@@ -467,7 +495,7 @@ export class OnlineGameScene extends Scene {
       context,
       primary,
       secondary,
-      "WASD / ARROWS  MOVE\nSPACE  PLACE CORE\nESC  LOBBY",
+      "TAP WASD / ARROWS  MOVE 1 TILE\nSPACE  PLACE CORE\nESC  LOBBY",
       suddenDeath ? "danger" : "normal",
       playingHudDetails(this.state, selfId, self, alive)
     );
