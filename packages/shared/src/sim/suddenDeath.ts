@@ -70,9 +70,24 @@ export function enforceRoundDeadline(state: GameState): void {
     const best = Math.max(...scores.map(({ score }) => score));
     const leaders = scores.filter(({ score }) => score === best);
     state.winnerId = leaders.length === 1 ? leaders[0].id : null;
+    state.winnerTeamId = null;
+    return;
+  }
+
+  if (mode.teamPolicy === "two-teams") {
+    const aliveByTeam = new Map<string, number>();
+    for (const player of state.players) {
+      if (!player.alive || !player.teamId) continue;
+      aliveByTeam.set(player.teamId, (aliveByTeam.get(player.teamId) ?? 0) + 1);
+    }
+    const best = Math.max(0, ...aliveByTeam.values());
+    const leaders = [...aliveByTeam.entries()].filter(([, count]) => count === best);
+    state.winnerId = null;
+    state.winnerTeamId = leaders.length === 1 ? leaders[0][0] as "alpha" | "beta" : null;
     return;
   }
 
   const alive = state.players.filter((player) => player.alive);
   state.winnerId = alive.length === 1 ? alive[0].id : null;
+  state.winnerTeamId = null;
 }

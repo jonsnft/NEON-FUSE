@@ -21,6 +21,16 @@ import {
 } from "./spriteAtlas";
 
 const TILE = 48;
+const PLAYER_COLORS = [
+  0x53f3ff,
+  0xff4fd8,
+  0xe9ff70,
+  0xffb84d,
+  0x9b7bff,
+  0xff6b6b,
+  0x6dffb2,
+  0xffffff
+] as const;
 
 interface PlayerSpriteState {
   image: GameObjects.Image;
@@ -47,6 +57,12 @@ const avatarVariant = (presentation?: PlayerPresentation): AvatarVariant => {
 };
 
 const pickupKey = (pickup: SimPickup): string => `${pickup.x}:${pickup.y}:${pickup.kind}`;
+const playerColor = (index: number): number => PLAYER_COLORS[index % PLAYER_COLORS.length];
+const teamColor = (teamId?: string | null): number | null => {
+  if (teamId === "alpha") return 0x53f3ff;
+  if (teamId === "beta") return 0xff4fd8;
+  return null;
+};
 
 export class SpriteAtlasLayer {
   static isAvailable(scene: Scene): boolean {
@@ -102,11 +118,12 @@ export class SpriteAtlasLayer {
 
     const preferences = getVisualPreferences();
     const animated = preferences.ambientMotionEnabled && preferences.quality !== "low";
-    const follow = 1 - Math.exp(-Math.max(0, deltaMs) / 70);
+    const follow = 1 - Math.exp(-Math.max(0, deltaMs) / 42);
 
     this.selection.clear();
 
-    for (const player of state.players) {
+    for (let index = 0; index < state.players.length; index++) {
+      const player = state.players[index];
       const visual = this.players.get(player.id);
       if (!visual) continue;
 
@@ -115,6 +132,8 @@ export class SpriteAtlasLayer {
       visual.image.setPosition(visual.x, visual.y);
 
       const variant = avatarVariant(this.presentations[player.id]);
+      const identityColor = playerColor(index);
+      visual.image.setTint(identityColor);
       visual.image.setAlpha(variant === "ghost" ? 0.86 : 1);
 
       if (player.alive) {
@@ -122,11 +141,32 @@ export class SpriteAtlasLayer {
         const moving = timeMs < visual.movingUntilMs;
         visual.image.setFrame(playerFrame(variant, visual.facing, moving, timeMs, animated));
 
+        this.selection.fillStyle(identityColor, 0.95);
+        this.selection.fillRect(visual.x - 9, visual.y + 19, 18, 3);
+
+        const team = teamColor(player.teamId);
+        if (team !== null) {
+          this.selection.lineStyle(2, team, 0.82);
+          this.selection.strokeCircle(visual.x, visual.y, 19);
+        }
+
+        if (player.id.startsWith("bot-")) {
+          this.selection.fillStyle(identityColor, 0.95);
+          this.selection.fillTriangle(
+            visual.x,
+            visual.y - 24,
+            visual.x - 5,
+            visual.y - 17,
+            visual.x + 5,
+            visual.y - 17
+          );
+        }
+
         if (player.id === this.selfId) {
-          this.selection.lineStyle(1, 0xffffff, 0.9);
-          this.selection.strokeRect(visual.x - 17, visual.y - 18, 34, 36);
-          this.selection.lineStyle(1, 0x53f3ff, 0.7);
-          this.selection.strokeCircle(visual.x, visual.y, 21);
+          this.selection.lineStyle(2, 0xffffff, 0.95);
+          this.selection.strokeRect(visual.x - 18, visual.y - 19, 36, 38);
+          this.selection.lineStyle(1, identityColor, 0.9);
+          this.selection.strokeCircle(visual.x, visual.y, 23);
         }
         continue;
       }
@@ -240,7 +280,7 @@ export class SpriteAtlasLayer {
 
       if (visual.targetX !== targetX || visual.targetY !== targetY) {
         visual.facing = inferFacing(visual.targetX, visual.targetY, targetX, targetY, visual.facing);
-        visual.movingUntilMs = this.scene.time.now + 180;
+        visual.movingUntilMs = this.scene.time.now + 130;
         visual.targetX = targetX;
         visual.targetY = targetY;
       }

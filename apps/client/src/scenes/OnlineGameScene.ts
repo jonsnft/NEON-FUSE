@@ -1,5 +1,6 @@
 import { Input, Scene } from "phaser";
 import {
+  BOT_DIFFICULTIES,
   GAME_MODE_IDS,
   GAME_MODES,
   ITEM_PRESET_IDS,
@@ -35,10 +36,27 @@ import {
 } from "../ui/matchHudDetails";
 
 const TILE = 48;
+const MOVE_ACK_TIMEOUT_MS = 350;
 
 interface OnlineSceneData {
   roomId?: string;
 }
+
+interface PendingMove {
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+  direction: Direction;
+  sentAtMs: number;
+}
+
+const directionDelta = (direction: Direction): readonly [number, number] => {
+  if (direction === "up") return [0, -1];
+  if (direction === "down") return [0, 1];
+  if (direction === "left") return [-1, 0];
+  return [1, 0];
+};
 
 export class OnlineGameScene extends Scene {
   private state: GameState | null = null;
@@ -50,13 +68,14 @@ export class OnlineGameScene extends Scene {
   private hud!: MatchHud;
   private chat!: LobbyChat;
   private keys!: Record<string, Input.Keyboard.Key>;
-  private nextMoveAt = 0;
   private seq = 0;
   private connectionStatus = "CONNECTING";
   private roomId?: string;
   private readonly sfx = new Sfx();
   private previousGame: GameState | null = null;
   private suddenDeathAnnounced = false;
+  private pendingMove: PendingMove | null = null;
+  private nextMoveAtMs = 0;
 
   constructor() {
     super("online-game");
@@ -98,6 +117,8 @@ export class OnlineGameScene extends Scene {
       items: Input.Keyboard.KeyCodes.I,
       modifier: Input.Keyboard.KeyCodes.G,
       pace: Input.Keyboard.KeyCodes.F,
+      bots: Input.Keyboard.KeyCodes.B,
+      botDifficulty: Input.Keyboard.KeyCodes.H,
       lobby: Input.Keyboard.KeyCodes.ESC
     }) as Record<string, Input.Keyboard.Key>;
 
@@ -192,18 +213,94 @@ export class OnlineGameScene extends Scene {
       });
     }
 
-    const direction = this.heldDirection();
-    const moveDelay = Math.max(55, 130 - self.speedTier * 15);
-
-    if (direction && time >= this.nextMoveAt) {
-      this.connection.send({
-        type: "player.move",
-        version: PROTOCOL_VERSION,
-        seq: ++this.seq,
-        direction
-      });
-      this.nextMoveAt = time + moveDelay;
+    if (this.pendingMove && time - this.pendingMove.sentAtMs >= MOVE_ACK_TIMEOUT_MS) {
+      this.pendingMove = null;
+      if (this.snapshot) {
+        this.assetLayer.setState(this.state, selfId, this.snapshot.presentations);
+      }
     }
+
+    const direction = this.heldDirection();
+    if (direction && !this.pendingMove && time >= this.nextMoveAtMs) {
+      const [dx, dy] = directionDelta(direction);
+      const toX = self.x + dx;
+      const toY = self.y + dy;
+
+      if (this.canPreviewMove(selfId, toX, toY)) {
+        const move: PendingMove = {
+          fromX: self.x,
+          fromY: self.y,
+          toX,
+          toY,
+          direction,
+          sentAtMs: time
+        };
+        this.pendingMove = move;
+        this.nextMoveAtMs = time + Math.max(82, 150 - self.speedTier * 14);
+
+        this.connection.send({
+          type: "player.move",
+          version: PROTOCOL_VERSION,
+          seq: ++this.seq,
+          direction
+        });
+
+        this.previewMove(move, selfId);
+        this.assetLayer.render(time, delta);
+      }
+    }
+  }
+
+  private canPreviewMove(selfId: string, x: number, y: number): boolean {
+    const state = this.state;
+    if (!state) return false;
+    if (x < 0 || y < 0 || x >= state.width || y >= state.height) return false;
+    if (state.tiles[y * state.width + x] !== "floor") return false;
+    if (state.cores.some((core) => core.x === x && core.y === y)) return false;
+    if (state.players.some((player) => player.alive && player.id !== selfId && player.x === x && player.y === y)) {
+      return false;
+    }
+    return true;
+  }
+
+  private previewMove(move: PendingMove, selfId: string): void {
+    if (!this.state || !this.snapshot) return;
+    const preview = structuredClone(this.state);
+    const self = playerById(preview, selfId);
+    if (!self) return;
+    self.x = move.toX;
+    self.y = move.toY;
+    this.assetLayer.setState(preview, selfId, this.snapshot.presentations);
+  }
+
+  private presentationState(game: GameState): GameState {
+    const move = this.pendingMove;
+    const selfId = this.connection.playerId;
+    if (!move || !selfId) return game;
+
+    const self = playerById(game, selfId);
+    if (!self) {
+      this.pendingMove = null;
+      return game;
+    }
+
+    if (self.x === move.toX && self.y === move.toY) {
+      this.pendingMove = null;
+      return game;
+    }
+
+    if (self.x === move.fromX && self.y === move.fromY) {
+      const preview = structuredClone(game);
+      const previewSelf = playerById(preview, selfId);
+      if (previewSelf) {
+        previewSelf.x = move.toX;
+        previewSelf.y = move.toY;
+      }
+      return preview;
+    }
+
+    this.pendingMove = null;
+    return game;
   }
 
   private handleCreatorConfig(): void {
@@ -218,7 +315,7 @@ export class OnlineGameScene extends Scene {
     }
 
     if (Input.Keyboard.JustDown(this.keys.players)) {
-      const minimum = Math.max(this.snapshot.connectedPlayers, this.snapshot.requiredPlayers);
+      const minimum = Math.max(this.snapshot.connectedPlayers + config.botCount, this.snapshot.requiredPlayers + config.botCount);
       const next = config.maxPlayers >= 8 ? minimum : Math.max(minimum, config.maxPlayers + 1);
       this.connection.configureLobby({ maxPlayers: next });
     }
@@ -250,6 +347,19 @@ export class OnlineGameScene extends Scene {
         pacePresetId: PACE_PRESET_IDS[(index + 1) % PACE_PRESET_IDS.length]
       });
     }
+
+    if (Input.Keyboard.JustDown(this.keys.bots)) {
+      const maxBots = Math.max(0, config.maxPlayers - this.snapshot.connectedPlayers);
+      const next = config.botCount >= maxBots ? 0 : config.botCount + 1;
+      this.connection.configureLobby({ botCount: next });
+    }
+
+    if (Input.Keyboard.JustDown(this.keys.botDifficulty)) {
+      const index = BOT_DIFFICULTIES.indexOf(config.botDifficulty);
+      this.connection.configureLobby({
+        botDifficulty: BOT_DIFFICULTIES[(index + 1) % BOT_DIFFICULTIES.length]
+      });
+    }
   }
 
   private acceptSnapshot(snapshot: MatchSnapshot): void {
@@ -257,6 +367,7 @@ export class OnlineGameScene extends Scene {
 
     if (snapshot.status === "waiting") {
       this.state = null;
+      this.pendingMove = null;
       this.hud.setArenaWidth(0);
       this.worldRenderer.clearState();
       this.assetLayer.clearState();
@@ -269,6 +380,8 @@ export class OnlineGameScene extends Scene {
     this.chat.setEnabled(false);
     this.playSnapshotCues(snapshot.game, snapshot.status);
     this.state = snapshot.game;
+    const presentationState = this.presentationState(this.state);
+
     this.hud.setArenaWidth(this.state.width * TILE);
     this.worldRenderer.setState(
       this.state,
@@ -276,7 +389,7 @@ export class OnlineGameScene extends Scene {
       snapshot.presentations
     );
     this.assetLayer.setState(
-      this.state,
+      presentationState,
       this.connection.playerId ?? undefined,
       snapshot.presentations
     );
@@ -300,8 +413,10 @@ export class OnlineGameScene extends Scene {
 
     if (status === "finished" && previous?.phase === "playing") {
       const selfId = this.connection.playerId;
-      if (!game.winnerId) this.sfx.draw();
-      else if (game.winnerId === selfId) this.sfx.victory();
+      const self = selfId ? playerById(game, selfId) : undefined;
+      const teamWin = Boolean(self?.teamId && game.winnerTeamId === self.teamId);
+      if (!game.winnerId && !game.winnerTeamId) this.sfx.draw();
+      else if (game.winnerId === selfId || teamWin) this.sfx.victory();
       else this.sfx.defeat();
     }
 
@@ -311,11 +426,22 @@ export class OnlineGameScene extends Scene {
   }
 
   private heldDirection(): Direction | null {
-    if (this.keys.up.isDown || this.keys.w.isDown) return "up";
-    if (this.keys.down.isDown || this.keys.s.isDown) return "down";
-    if (this.keys.left.isDown || this.keys.a.isDown) return "left";
-    if (this.keys.right.isDown || this.keys.d.isDown) return "right";
-    return null;
+    const candidates: Array<{ direction: Direction; timeDown: number }> = [];
+    const pushIfDown = (direction: Direction, key: Input.Keyboard.Key): void => {
+      if (key.isDown) candidates.push({ direction, timeDown: key.timeDown });
+    };
+
+    pushIfDown("up", this.keys.up);
+    pushIfDown("up", this.keys.w);
+    pushIfDown("down", this.keys.down);
+    pushIfDown("down", this.keys.s);
+    pushIfDown("left", this.keys.left);
+    pushIfDown("left", this.keys.a);
+    pushIfDown("right", this.keys.right);
+    pushIfDown("right", this.keys.d);
+
+    candidates.sort((a, b) => b.timeDown - a.timeDown);
+    return candidates[0]?.direction ?? null;
   }
 
   private renderStatus(): void {
@@ -334,45 +460,85 @@ export class OnlineGameScene extends Scene {
         this.snapshot.readyPlayerIds.length === this.snapshot.connectedPlayers;
       const config = this.snapshot.config;
       const mapName = OFFICIAL_MAPS[config.mapId].displayName.toUpperCase();
-      const modeName = GAME_MODES[config.gameModeId].displayName;
-      const primary = `${this.snapshot.connectedPlayers}/${config.maxPlayers} PLAYERS   ${this.snapshot.readyPlayerIds.length}/${this.snapshot.connectedPlayers} READY`;
-      const secondary = `MODE ${modeName}   MAP ${mapName}\nITEMS ${config.itemPresetId.toUpperCase()}   MOD ${config.modifierPresetId.toUpperCase()}   PACE ${config.pacePresetId.toUpperCase()}${isCreator ? "   CREATOR" : ""}`;
+      const mode = GAME_MODES[config.gameModeId];
+      const modeName = mode.displayName;
+      const totalPlayers = this.snapshot.connectedPlayers + config.botCount;
+      const primary = `${totalPlayers}/${config.maxPlayers} PLAYERS   ${this.snapshot.readyPlayerIds.length}/${this.snapshot.connectedPlayers} HUMAN READY`;
+      const secondary = `${isCreator ? "YOU ARE THE CREATOR" : "WAITING FOR CREATOR"}\n${this.snapshot.connectedPlayers} HUMAN   ${config.botCount} AI`;
 
       let controls: string;
       if (isCreator) {
-        const start = allReady ? "ENTER START   " : "";
-        controls = `${start}O MODE   M MAP   P PLAYERS   I ITEMS   G MOD   F PACE\n${ready ? "R UNREADY" : "R READY"}   T CHAT   ESC LOBBY`;
+        const start = allReady ? "ENTER  START MATCH\n" : "";
+        controls = `${start}${ready ? "R  UNREADY" : "R  READY"}   T  CHAT   ESC  LOBBY`;
       } else if (allReady) {
-        controls = "ALL READY - WAITING FOR CREATOR   T CHAT   ESC LOBBY";
+        controls = "ALL HUMANS READY — WAITING FOR CREATOR   T  CHAT   ESC  LOBBY";
       } else {
-        controls = `${ready ? "R UNREADY" : "R READY"}   T CHAT   ESC LOBBY`;
+        controls = `${ready ? "R  UNREADY" : "R  READY"}   T  CHAT   ESC  LOBBY`;
       }
 
       this.hud.show(
-        "NETWORK LOBBY",
+        "MATCH SETUP",
         primary,
         secondary,
         controls,
         allReady ? "success" : "normal",
         {
-          objective: isCreator
-            ? `SHAPE THE RUN — ${modeName} changes the win condition while Core/Blast rules stay stable.`
-            : `LOCK IN — ${modeName} is selected. Read the rules, then adapt once the grid goes live.`
+          objective: `${mode.objective} — ${mode.description}`,
+          items: [
+            {
+              glyph: "O",
+              name: "MODE",
+              current: modeName,
+              description: isCreator ? "O changes mode" : "Selected by creator"
+            },
+            {
+              glyph: "M",
+              name: "MAP",
+              current: mapName,
+              description: isCreator ? "M changes arena" : "Selected arena"
+            },
+            {
+              glyph: "B",
+              name: "AI OPPONENTS",
+              current: `${config.botCount} / ${config.botDifficulty.toUpperCase()}`,
+              description: isCreator ? "B count  •  H difficulty" : "Configured AI roster"
+            },
+            {
+              glyph: "P",
+              name: "PLAYER SLOTS",
+              current: `${totalPlayers}/${config.maxPlayers}`,
+              description: isCreator ? "P changes total capacity" : "Current lobby capacity"
+            },
+            {
+              glyph: "I",
+              name: "RULES",
+              current: config.itemPresetId.toUpperCase(),
+              description: isCreator
+                ? `I items  •  G ${config.modifierPresetId.toUpperCase()}  •  F ${config.pacePresetId.toUpperCase()}`
+                : `${config.modifierPresetId.toUpperCase()}  •  ${config.pacePresetId.toUpperCase()}`
+            }
+          ]
         }
       );
       return;
     }
 
     if (this.snapshot.status === "finished") {
-      const outcome = this.state?.winnerId
-        ? this.state.winnerId === selfId ? "ROUND WON" : "ROUND LOST"
-        : "ROUND DRAW";
-      const voted = selfId ? this.snapshot.rematchPlayerIds.includes(selfId) : false;
       const state = this.state;
+      const self = selfId && state ? playerById(state, selfId) : undefined;
+      const teamWin = Boolean(self?.teamId && state?.winnerTeamId === self.teamId);
+      const hasWinner = Boolean(state?.winnerId || state?.winnerTeamId);
+      const outcome = !hasWinner
+        ? "ROUND DRAW"
+        : state?.winnerId === selfId || teamWin
+          ? "ROUND WON"
+          : "ROUND LOST";
+      const voted = selfId ? this.snapshot.rematchPlayerIds.includes(selfId) : false;
       const alive = state?.players.filter((player) => player.alive).length ?? 0;
       const total = state?.players.length ?? 0;
       const modeName = state ? GAME_MODES[state.rules.gameModeId].displayName : "-";
-      const secondary = `MODE ${modeName}   MAP ${state?.mapId ?? "-"}\nSURVIVORS ${alive}/${total}\nITEMS ${state?.rules.itemPresetId ?? "-"}   PACE ${state?.rules.pacePresetId ?? "-"}`;
+      const teamResult = state?.winnerTeamId ? `   WINNER TEAM ${state.winnerTeamId.toUpperCase()}` : "";
+      const secondary = `MODE ${modeName}${teamResult}   MAP ${state?.mapId ?? "-"}\nSURVIVORS ${alive}/${total}\nITEMS ${state?.rules.itemPresetId ?? "-"}   PACE ${state?.rules.pacePresetId ?? "-"}`;
       this.hud.show(
         "ROUND COMPLETE",
         outcome,
@@ -426,18 +592,22 @@ export class OnlineGameScene extends Scene {
       ? `GRID CONTROL   SYNC ${scoreForPlayer(this.state, selfId)}/${mode.scoreTarget ?? "-"}`
       : this.state.rules.gameModeId === "core-rush"
         ? `CORE RUSH   SCORE ${scoreForPlayer(this.state, selfId)}/${mode.scoreTarget ?? "-"}`
-        : `YOU LIVE   ALIVE ${alive}/${total}`;
+        : this.state.rules.gameModeId === "classic-team-deathmatch"
+          ? `CLASSIC TEAM DM   TEAM ${self.teamId?.toUpperCase() ?? "-"}`
+          : `CLASSIC DEATHMATCH   ALIVE ${alive}/${total}`;
     const secondary = `${modeLine}\nMAP ${this.state.mapId}   PACE ${this.state.rules.pacePresetId.toUpperCase()}\nRANGE ${self.blastRange}   CORES ${self.coreCapacity}   SPEED ${self.speedTier}`;
     const context = this.state.rules.gameModeId === "grid-control"
       ? "ONLINE // GRID CONTROL"
       : this.state.rules.gameModeId === "core-rush"
         ? "ONLINE // CORE RUSH"
-        : "ONLINE MATCH";
+        : this.state.rules.gameModeId === "classic-team-deathmatch"
+          ? "ONLINE // CLASSIC TEAM DEATHMATCH"
+          : "ONLINE // CLASSIC DEATHMATCH";
     this.hud.show(
       context,
       primary,
       secondary,
-      "WASD / ARROWS  MOVE\nSPACE  PLACE CORE\nESC  LOBBY",
+      "HOLD WASD / ARROWS  MOVE\nSPACE  PLACE CORE\nESC  LOBBY",
       suddenDeath ? "danger" : "normal",
       playingHudDetails(this.state, selfId, self, alive)
     );

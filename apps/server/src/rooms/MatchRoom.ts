@@ -12,7 +12,9 @@ import {
   normalizeOfficialMapId,
   playerById,
   resolveRound,
+  tickBots,
   tickSimulation,
+  type BotRuntime,
   type ChatMessage,
   type GameRules,
   type GameState,
@@ -25,7 +27,6 @@ import {
   HARD_MAX_PLAYERS,
   MIN_PLAYERS,
   clampMaxPlayers,
-  everyConnectedHasVoted,
   idsExcluding
 } from "../lifecycle";
 import { createPlatformServices } from "../platform/createPlatformServices";
@@ -37,6 +38,8 @@ const isRoundFinished = (game: GameState): boolean => game.phase === "finished";
 const sameConfig = (a: LobbyConfig, b: LobbyConfig): boolean =>
   a.maxPlayers === b.maxPlayers &&
   a.mapId === b.mapId &&
+  a.botCount === b.botCount &&
+  a.botDifficulty === b.botDifficulty &&
   a.gameModeId === b.gameModeId &&
   a.itemPresetId === b.itemPresetId &&
   a.modifierPresetId === b.modifierPresetId &&
@@ -59,6 +62,7 @@ export class MatchRoom extends Room {
   private readonly platform = createPlatformServices();
   private readonly presentations = new Map<string, PlayerPresentation>();
   private readonly subjectIds = new Map<string, string>();
+  private readonly botRuntime: BotRuntime = new Map();
   private config: LobbyConfig = { ...DEFAULT_LOBBY_CONFIG };
   private creatorPlayerId: string | null = null;
 
@@ -68,7 +72,7 @@ export class MatchRoom extends Room {
       maxPlayers: clampMaxPlayers(options.maxPlayers),
       mapId: normalizeOfficialMapId(options.mapId)
     };
-    this.maxClients = this.config.maxPlayers;
+    this.updateClientCapacity();
 
     this.onMessage("chat.send", (client, payload: unknown) => {
       if (this.game || !isChatSend(payload)) return;
@@ -100,7 +104,7 @@ export class MatchRoom extends Room {
       if (!next || sameConfig(next, this.config)) return;
 
       this.config = next;
-      this.maxClients = next.maxPlayers;
+      this.updateClientCapacity();
       this.readyIds.clear();
       this.broadcastWaiting();
       void this.refreshMetadata();
@@ -143,6 +147,7 @@ export class MatchRoom extends Room {
     this.setSimulationInterval((deltaTime) => {
       if (!this.game || this.game.phase !== "playing") return;
       const wasPlaying = this.game.phase === "playing";
+      tickBots(this.game, this.botIds(), this.config.botDifficulty, this.botRuntime);
       tickSimulation(this.game, Math.min(deltaTime, 100));
       this.broadcastSnapshot();
       if (wasPlaying && isRoundFinished(this.game)) {
@@ -228,15 +233,14 @@ export class MatchRoom extends Room {
         player.alive = false;
         player.respawnAtMs = null;
       }
-      if (remainingIds.length < MIN_PLAYERS) {
-        this.game.phase = "finished";
-        this.game.winnerId = remainingIds[0] ?? null;
+      if (remainingIds.length === 0) {
+        this.resetToWaiting();
       } else {
         resolveRound(this.game);
+        this.broadcastSnapshot();
       }
-      this.broadcastSnapshot();
     } else if (this.game?.phase === "finished") {
-      if (remainingIds.length < MIN_PLAYERS) {
+      if (remainingIds.length === 0) {
         this.resetToWaiting();
       } else {
         this.tryStartRematch(remainingIds);
@@ -258,15 +262,38 @@ export class MatchRoom extends Room {
     };
   }
 
-  private tryStartRound(requesterId: string): void {
-    if (this.game || requesterId !== this.creatorPlayerId || this.clients.length < MIN_PLAYERS) return;
-    const ids = this.clients.map((client) => client.sessionId);
-    if (!everyConnectedHasVoted(ids, this.readyIds)) return;
+  private botIds(): string[] {
+    return Array.from({ length: this.config.botCount }, (_, index) => `bot-${index + 1}`);
+  }
 
+  private rosterIds(humanIds = this.clients.map((client) => client.sessionId)): string[] {
+    return [...humanIds, ...this.botIds()];
+  }
+
+  private requiredHumanPlayers(): number {
+    return Math.max(1, MIN_PLAYERS - this.config.botCount);
+  }
+
+  private allHumansReady(ids: readonly string[], votes: ReadonlySet<string>): boolean {
+    return ids.length >= this.requiredHumanPlayers() && ids.every((id) => votes.has(id));
+  }
+
+  private updateClientCapacity(): void {
+    this.maxClients = Math.max(1, this.config.maxPlayers - this.config.botCount);
+  }
+
+  private tryStartRound(requesterId: string): void {
+    if (this.game || requesterId !== this.creatorPlayerId) return;
+    const humanIds = this.clients.map((client) => client.sessionId);
+    if (humanIds.length + this.config.botCount < MIN_PLAYERS) return;
+    if (!this.allHumansReady(humanIds, this.readyIds)) return;
+
+    const ids = this.rosterIds(humanIds);
     this.game = createOfficialArena(this.config.mapId, ids, this.gameRules());
+    this.botRuntime.clear();
     this.rematchIds.clear();
     this.readyIds.clear();
-    for (const id of ids) this.lastSeq.set(id, -1);
+    for (const id of humanIds) this.lastSeq.set(id, -1);
     void this.lock();
     void this.platform.telemetry.track({ type: "match.started", playerCount: ids.length, rematch: false });
     this.broadcastSnapshot();
@@ -274,12 +301,14 @@ export class MatchRoom extends Room {
 
   private tryStartRematch(roster?: string[]): void {
     if (this.game?.phase !== "finished") return;
-    const ids = roster ?? this.clients.map((client) => client.sessionId);
-    if (!everyConnectedHasVoted(ids, this.rematchIds)) return;
+    const humanIds = roster ?? this.clients.map((client) => client.sessionId);
+    if (!this.allHumansReady(humanIds, this.rematchIds)) return;
 
+    const ids = this.rosterIds(humanIds);
     this.game = createOfficialArena(this.config.mapId, ids, this.gameRules());
+    this.botRuntime.clear();
     this.rematchIds.clear();
-    for (const id of ids) this.lastSeq.set(id, -1);
+    for (const id of humanIds) this.lastSeq.set(id, -1);
     void this.lock();
     void this.platform.telemetry.track({ type: "match.started", playerCount: ids.length, rematch: true });
     this.broadcastSnapshot();
@@ -287,6 +316,7 @@ export class MatchRoom extends Room {
 
   private resetToWaiting(): void {
     this.game = null;
+    this.botRuntime.clear();
     this.readyIds.clear();
     this.rematchIds.clear();
     if (!this.creatorPlayerId) this.creatorPlayerId = this.clients[0]?.sessionId ?? null;
@@ -301,7 +331,7 @@ export class MatchRoom extends Room {
       version: PROTOCOL_VERSION,
       status: "waiting",
       connectedPlayers,
-      requiredPlayers: MIN_PLAYERS,
+      requiredPlayers: this.requiredHumanPlayers(),
       readyPlayerIds: [...this.readyIds],
       creatorPlayerId: this.creatorPlayerId,
       config: { ...this.config }
@@ -338,7 +368,7 @@ export class MatchRoom extends Room {
         version: PROTOCOL_VERSION,
         status: "waiting",
         connectedPlayers: this.clients.length,
-        requiredPlayers: MIN_PLAYERS,
+        requiredPlayers: this.requiredHumanPlayers(),
         readyPlayerIds: [...this.readyIds],
         creatorPlayerId: this.creatorPlayerId,
         config: { ...this.config }
@@ -377,6 +407,8 @@ export class MatchRoom extends Room {
       maxPlayers: this.config.maxPlayers,
       connectedPlayers: this.clients.length,
       readyPlayers: this.readyIds.size,
+      botCount: this.config.botCount,
+      botDifficulty: this.config.botDifficulty,
       mapId: this.config.mapId,
       gameModeId: this.config.gameModeId,
       itemPresetId: this.config.itemPresetId,

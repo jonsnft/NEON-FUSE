@@ -3,7 +3,7 @@ import { gameModePolicyForRules, pickupKindsForRules } from "../rules/catalog";
 import { DEFAULT_GAME_RULES, type GameRules } from "../rules/types";
 import { createControlNodes } from "./objectives";
 import { distributePickups } from "./pickups";
-import type { GameState, SimPlayer, TileKind } from "./types";
+import type { GameState, SimPlayer, TeamId, TileKind } from "./types";
 import { indexOf } from "./types";
 
 const spawnPoints = [
@@ -16,6 +16,8 @@ const spawnPoints = [
   [Math.floor(GAME.gridWidth / 2), 1],
   [Math.floor(GAME.gridWidth / 2), GAME.gridHeight - 2]
 ] as const;
+
+const teamForSpawn = (spawnIndex: number): TeamId => spawnIndex % 2 === 0 ? "alpha" : "beta";
 
 export function createArena(
   playerIds: string[] = ["local-player"],
@@ -63,11 +65,13 @@ export function createArena(
     }
   }
   const pickups = distributePickups(softCells, playerIds.length, pickupKindsForRules(rules));
+  const mode = gameModePolicyForRules(rules);
 
   const players: SimPlayer[] = playerIds.map((id, i) => {
     const [x, y] = spawnPoints[i];
     return {
       id,
+      teamId: mode.teamPolicy === "two-teams" ? teamForSpawn(i) : null,
       x,
       y,
       spawnX: x,
@@ -80,7 +84,6 @@ export function createArena(
       coreCapacity: GAME.initialCoreCapacity
     };
   });
-  const mode = gameModePolicyForRules(rules);
   const controlNodes = createControlNodes(width, height, tiles, players, rules);
 
   return {
@@ -116,6 +119,7 @@ export function createArena(
     suddenDeathCursor: 0,
     nextCoreId: 1,
     phase: "playing",
-    winnerId: null
+    winnerId: null,
+    winnerTeamId: null
   };
 }

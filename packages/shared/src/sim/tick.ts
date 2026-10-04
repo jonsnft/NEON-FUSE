@@ -109,11 +109,26 @@ export function resolveRound(state: GameState): void {
   if (state.phase !== "playing" || state.players.length < 2) return;
   const mode = gameModePolicyForRules(state.rules);
 
-  if (state.rules.gameModeId === "survival") {
+  if (mode.teamPolicy === "two-teams") {
+    const aliveTeams = new Set(
+      state.players
+        .filter((player) => player.alive && player.teamId)
+        .map((player) => player.teamId!)
+    );
+    if (aliveTeams.size <= 1) {
+      state.phase = "finished";
+      state.winnerId = null;
+      state.winnerTeamId = aliveTeams.values().next().value ?? null;
+    }
+    return;
+  }
+
+  if (state.rules.gameModeId === "classic-deathmatch") {
     const alive = state.players.filter((player) => player.alive);
     if (alive.length <= 1) {
       state.phase = "finished";
       state.winnerId = alive[0]?.id ?? null;
+      state.winnerTeamId = null;
     }
     return;
   }
@@ -130,6 +145,7 @@ export function resolveRound(state: GameState): void {
 
   state.phase = "finished";
   state.winnerId = leaders[0].id;
+  state.winnerTeamId = null;
 }
 
 function blastCells(state: GameState, originX: number, originY: number, range: number): Array<[number, number]> {

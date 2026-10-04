@@ -53,15 +53,19 @@ export function playingHudDetails(
     ? `CORE RUSH — score ${mode.scoreTarget ?? 0} clean eliminations. Reboot after a hit; pressure lanes instead of hiding.`
     : state.rules.gameModeId === "grid-control"
       ? `GRID CONTROL — capture a DATA NODE, then stay linked to upload SYNC. Contested nodes stop scoring; first to ${mode.scoreTarget ?? 0} wins.`
-      : alive <= 2
-        ? "FINAL DUEL — control lanes, force movement, survive your own blast paths."
-        : "OUTLAST THE GRID — break soft blocks, build power, trap routes, survive contraction.";
+      : state.rules.gameModeId === "classic-team-deathmatch"
+        ? `CLASSIC TEAM DEATHMATCH — TEAM ${player.teamId?.toUpperCase() ?? "-"}. No respawns. Eliminate the opposing team; friendly blast paths still matter.`
+        : alive <= 2
+          ? "CLASSIC DEATHMATCH — FINAL DUEL. No respawns. Last player standing wins."
+          : "CLASSIC DEATHMATCH — break soft blocks, collect power-ups and survive. No respawns; last player standing wins.";
 
   const modeScore = state.rules.gameModeId === "grid-control"
     ? `SYNC  ${scoreForPlayer(state, playerId)}/${mode.scoreTarget ?? "-"}`
     : state.rules.gameModeId === "core-rush"
       ? `SCORE  ${scoreForPlayer(state, playerId)}/${mode.scoreTarget ?? "-"}`
-      : `ELIMS  ${metrics?.eliminations ?? 0}`;
+      : state.rules.gameModeId === "classic-team-deathmatch"
+        ? `TEAM  ${player.teamId?.toUpperCase() ?? "-"}`
+        : `ELIMS  ${metrics?.eliminations ?? 0}`;
 
   return {
     objective,
@@ -100,7 +104,9 @@ export function rebootHudDetails(state: GameState, playerId: string): HudDetails
 
 export function spectatingHudDetails(state: GameState): HudDetails {
   return {
-    objective: "READ THE BOARD — watch safe lanes, chain timing and pickup routes for the next run.",
+    objective: state.rules.gameModeId === "classic-team-deathmatch"
+      ? "TEAM BATTLE — your run is over, but your team can still win. Read the remaining lanes and blast pressure."
+      : "READ THE BOARD — watch safe lanes, chain timing and pickup routes for the next run.",
     telemetry: [
       `ALIVE  ${state.players.filter((player) => player.alive).length}/${state.players.length}`,
       `MATCH CHAINS  ${state.metrics.chainDetonations}`
@@ -110,14 +116,20 @@ export function spectatingHudDetails(state: GameState): HudDetails {
 
 export function finishedHudDetails(state: GameState, playerId?: string): HudDetails {
   const metrics = playerId ? metricsForPlayer(state, playerId) : undefined;
+  const player = playerId ? state.players.find((candidate) => candidate.id === playerId) : undefined;
   const mode = gameModePolicyForRules(state.rules);
+  const won = state.rules.gameModeId === "classic-team-deathmatch"
+    ? Boolean(player?.teamId && state.winnerTeamId === player.teamId)
+    : state.winnerId === playerId;
   const telemetry = metrics
     ? [
         state.rules.gameModeId === "grid-control"
           ? `YOUR SYNC  ${metrics.objectivePoints}/${mode.scoreTarget ?? "-"}`
           : state.rules.gameModeId === "core-rush"
             ? `YOUR SCORE  ${metrics.eliminations}/${mode.scoreTarget ?? "-"}`
-            : `YOUR ELIMS  ${metrics.eliminations}`,
+            : state.rules.gameModeId === "classic-team-deathmatch"
+              ? `YOUR TEAM  ${player?.teamId?.toUpperCase() ?? "-"}`
+              : `YOUR ELIMS  ${metrics.eliminations}`,
         ...(state.rules.gameModeId === "grid-control" ? [`NODES CAPTURED  ${metrics.nodesCaptured}`] : []),
         `YOUR CORES  ${metrics.coresPlaced}`,
         `YOUR PICKUPS  ${pickupTotal(metrics.pickupsCollected)}`,
@@ -128,7 +140,7 @@ export function finishedHudDetails(state: GameState, playerId?: string): HudDeta
     : [`MATCH CHAINS  ${state.metrics.chainDetonations}`];
 
   return {
-    objective: state.winnerId === playerId
+    objective: won
       ? "DEFEND THE RESULT — rematch keeps the rivalry and map knowledge live."
       : "ADAPT NEXT RUN — change route, Core timing or pickup priority on the rematch.",
     telemetry

@@ -1,4 +1,9 @@
-export const GAME_MODE_IDS = ["survival", "core-rush", "grid-control"] as const;
+export const GAME_MODE_IDS = [
+  "classic-deathmatch",
+  "classic-team-deathmatch",
+  "core-rush",
+  "grid-control"
+] as const;
 export type GameModeId = typeof GAME_MODE_IDS[number];
 
 export const ITEM_PRESET_IDS = ["standard", "no-speed", "no-items"] as const;
@@ -18,7 +23,7 @@ export interface GameRules {
 }
 
 export const DEFAULT_GAME_RULES: GameRules = {
-  gameModeId: "survival",
+  gameModeId: "classic-deathmatch",
   itemPresetId: "standard",
   modifierPresetId: "standard",
   pacePresetId: "standard"
