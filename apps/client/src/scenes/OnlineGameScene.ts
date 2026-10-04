@@ -36,9 +36,17 @@ import {
 } from "../ui/matchHudDetails";
 
 const TILE = 48;
+const MOVE_ACK_TIMEOUT_MS = 190;
 
 interface OnlineSceneData {
   roomId?: string;
+}
+
+interface PendingMove {
+  fromX: number;
+  fromY: number;
+  direction: Direction;
+  sentAtMs: number;
 }
 
 export class OnlineGameScene extends Scene {
@@ -57,6 +65,8 @@ export class OnlineGameScene extends Scene {
   private readonly sfx = new Sfx();
   private previousGame: GameState | null = null;
   private suddenDeathAnnounced = false;
+  private pendingMove: PendingMove | null = null;
+  private nextMoveAtMs = 0;
 
   constructor() {
     super("online-game");
@@ -194,8 +204,19 @@ export class OnlineGameScene extends Scene {
       });
     }
 
-    const direction = this.justPressedDirection();
-    if (direction) {
+    if (this.pendingMove && time - this.pendingMove.sentAtMs >= MOVE_ACK_TIMEOUT_MS) {
+      this.pendingMove = null;
+    }
+
+    const direction = this.heldDirection();
+    if (direction && !this.pendingMove && time >= this.nextMoveAtMs) {
+      this.pendingMove = {
+        fromX: self.x,
+        fromY: self.y,
+        direction,
+        sentAtMs: time
+      };
+      this.nextMoveAtMs = time + Math.max(82, 150 - self.speedTier * 14);
       this.connection.send({
         type: "player.move",
         version: PROTOCOL_VERSION,
@@ -269,6 +290,7 @@ export class OnlineGameScene extends Scene {
 
     if (snapshot.status === "waiting") {
       this.state = null;
+      this.pendingMove = null;
       this.hud.setArenaWidth(0);
       this.worldRenderer.clearState();
       this.assetLayer.clearState();
@@ -281,6 +303,17 @@ export class OnlineGameScene extends Scene {
     this.chat.setEnabled(false);
     this.playSnapshotCues(snapshot.game, snapshot.status);
     this.state = snapshot.game;
+
+    const selfId = this.connection.playerId;
+    const self = selfId ? playerById(this.state, selfId) : undefined;
+    if (
+      this.pendingMove &&
+      self &&
+      (self.x !== this.pendingMove.fromX || self.y !== this.pendingMove.fromY)
+    ) {
+      this.pendingMove = null;
+    }
+
     this.hud.setArenaWidth(this.state.width * TILE);
     this.worldRenderer.setState(
       this.state,
@@ -324,12 +357,23 @@ export class OnlineGameScene extends Scene {
     }
   }
 
-  private justPressedDirection(): Direction | null {
-    if (Input.Keyboard.JustDown(this.keys.up) || Input.Keyboard.JustDown(this.keys.w)) return "up";
-    if (Input.Keyboard.JustDown(this.keys.down) || Input.Keyboard.JustDown(this.keys.s)) return "down";
-    if (Input.Keyboard.JustDown(this.keys.left) || Input.Keyboard.JustDown(this.keys.a)) return "left";
-    if (Input.Keyboard.JustDown(this.keys.right) || Input.Keyboard.JustDown(this.keys.d)) return "right";
-    return null;
+  private heldDirection(): Direction | null {
+    const candidates: Array<{ direction: Direction; timeDown: number }> = [];
+    const pushIfDown = (direction: Direction, key: Input.Keyboard.Key): void => {
+      if (key.isDown) candidates.push({ direction, timeDown: key.timeDown });
+    };
+
+    pushIfDown("up", this.keys.up);
+    pushIfDown("up", this.keys.w);
+    pushIfDown("down", this.keys.down);
+    pushIfDown("down", this.keys.s);
+    pushIfDown("left", this.keys.left);
+    pushIfDown("left", this.keys.a);
+    pushIfDown("right", this.keys.right);
+    pushIfDown("right", this.keys.d);
+
+    candidates.sort((a, b) => b.timeDown - a.timeDown);
+    return candidates[0]?.direction ?? null;
   }
 
   private renderStatus(): void {
@@ -495,7 +539,7 @@ export class OnlineGameScene extends Scene {
       context,
       primary,
       secondary,
-      "TAP WASD / ARROWS  MOVE 1 TILE\nSPACE  PLACE CORE\nESC  LOBBY",
+      "HOLD WASD / ARROWS  MOVE\nSPACE  PLACE CORE\nESC  LOBBY",
       suddenDeath ? "danger" : "normal",
       playingHudDetails(this.state, selfId, self, alive)
     );
