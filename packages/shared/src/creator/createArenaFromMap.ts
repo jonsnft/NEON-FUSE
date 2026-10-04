@@ -3,9 +3,11 @@ import { DEFAULT_GAME_RULES, type GameRules } from "../rules/types";
 import { gameModePolicyForRules, pickupKindsForRules } from "../rules/catalog";
 import { createControlNodes } from "../sim/objectives";
 import { distributePickups } from "../sim/pickups";
-import type { SimPlayer, GameState } from "../sim/types";
+import type { SimPlayer, GameState, TeamId } from "../sim/types";
 import type { CreatorMapDefinition } from "./types";
 import { validateCreatorMap } from "./validateMap";
+
+const teamForSpawn = (spawnIndex: number): TeamId => spawnIndex % 2 === 0 ? "alpha" : "beta";
 
 export function createArenaFromMap(
   map: CreatorMapDefinition,
@@ -24,10 +26,12 @@ export function createArenaFromMap(
   }
 
   const mapValue = validated.value;
+  const mode = gameModePolicyForRules(rules);
   const players: SimPlayer[] = playerIds.map((id, index) => {
     const spawn = mapValue.spawnPoints[index];
     return {
       id,
+      teamId: mode.teamPolicy === "two-teams" ? teamForSpawn(index) : null,
       x: spawn.x,
       y: spawn.y,
       spawnX: spawn.x,
@@ -51,7 +55,6 @@ export function createArenaFromMap(
     playerIds.length,
     pickupKindsForRules(rules)
   );
-  const mode = gameModePolicyForRules(rules);
   const controlNodes = createControlNodes(
     mapValue.width,
     mapValue.height,
@@ -93,6 +96,7 @@ export function createArenaFromMap(
     suddenDeathCursor: 0,
     nextCoreId: 1,
     phase: "playing",
-    winnerId: null
+    winnerId: null,
+    winnerTeamId: null
   };
 }
