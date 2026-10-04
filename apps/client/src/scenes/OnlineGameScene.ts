@@ -36,7 +36,7 @@ import {
 } from "../ui/matchHudDetails";
 
 const TILE = 48;
-const MOVE_ACK_TIMEOUT_MS = 190;
+const MOVE_ACK_TIMEOUT_MS = 350;
 
 interface OnlineSceneData {
   roomId?: string;
@@ -45,9 +45,18 @@ interface OnlineSceneData {
 interface PendingMove {
   fromX: number;
   fromY: number;
+  toX: number;
+  toY: number;
   direction: Direction;
   sentAtMs: number;
 }
+
+const directionDelta = (direction: Direction): readonly [number, number] => {
+  if (direction === "up") return [0, -1];
+  if (direction === "down") return [0, 1];
+  if (direction === "left") return [-1, 0];
+  return [1, 0];
+};
 
 export class OnlineGameScene extends Scene {
   private state: GameState | null = null;
@@ -206,24 +215,92 @@ export class OnlineGameScene extends Scene {
 
     if (this.pendingMove && time - this.pendingMove.sentAtMs >= MOVE_ACK_TIMEOUT_MS) {
       this.pendingMove = null;
+      if (this.snapshot) {
+        this.assetLayer.setState(this.state, selfId, this.snapshot.presentations);
+      }
     }
 
     const direction = this.heldDirection();
     if (direction && !this.pendingMove && time >= this.nextMoveAtMs) {
-      this.pendingMove = {
-        fromX: self.x,
-        fromY: self.y,
-        direction,
-        sentAtMs: time
-      };
-      this.nextMoveAtMs = time + Math.max(82, 150 - self.speedTier * 14);
-      this.connection.send({
-        type: "player.move",
-        version: PROTOCOL_VERSION,
-        seq: ++this.seq,
-        direction
-      });
+      const [dx, dy] = directionDelta(direction);
+      const toX = self.x + dx;
+      const toY = self.y + dy;
+
+      if (this.canPreviewMove(selfId, toX, toY)) {
+        const move: PendingMove = {
+          fromX: self.x,
+          fromY: self.y,
+          toX,
+          toY,
+          direction,
+          sentAtMs: time
+        };
+        this.pendingMove = move;
+        this.nextMoveAtMs = time + Math.max(82, 150 - self.speedTier * 14);
+
+        this.connection.send({
+          type: "player.move",
+          version: PROTOCOL_VERSION,
+          seq: ++this.seq,
+          direction
+        });
+
+        this.previewMove(move, selfId);
+        this.assetLayer.render(time, delta);
+      }
     }
+  }
+
+  private canPreviewMove(selfId: string, x: number, y: number): boolean {
+    const state = this.state;
+    if (!state) return false;
+    if (x < 0 || y < 0 || x >= state.width || y >= state.height) return false;
+    if (state.tiles[y * state.width + x] !== "floor") return false;
+    if (state.cores.some((core) => core.x === x && core.y === y)) return false;
+    if (state.players.some((player) => player.alive && player.id !== selfId && player.x === x && player.y === y)) {
+      return false;
+    }
+    return true;
+  }
+
+  private previewMove(move: PendingMove, selfId: string): void {
+    if (!this.state || !this.snapshot) return;
+    const preview = structuredClone(this.state);
+    const self = playerById(preview, selfId);
+    if (!self) return;
+    self.x = move.toX;
+    self.y = move.toY;
+    this.assetLayer.setState(preview, selfId, this.snapshot.presentations);
+  }
+
+  private presentationState(game: GameState): GameState {
+    const move = this.pendingMove;
+    const selfId = this.connection.playerId;
+    if (!move || !selfId) return game;
+
+    const self = playerById(game, selfId);
+    if (!self) {
+      this.pendingMove = null;
+      return game;
+    }
+
+    if (self.x === move.toX && self.y === move.toY) {
+      this.pendingMove = null;
+      return game;
+    }
+
+    if (self.x === move.fromX && self.y === move.fromY) {
+      const preview = structuredClone(game);
+      const previewSelf = playerById(preview, selfId);
+      if (previewSelf) {
+        previewSelf.x = move.toX;
+        previewSelf.y = move.toY;
+      }
+      return preview;
+    }
+
+    this.pendingMove = null;
+    return game;
   }
 
   private handleCreatorConfig(): void {
@@ -303,16 +380,7 @@ export class OnlineGameScene extends Scene {
     this.chat.setEnabled(false);
     this.playSnapshotCues(snapshot.game, snapshot.status);
     this.state = snapshot.game;
-
-    const selfId = this.connection.playerId;
-    const self = selfId ? playerById(this.state, selfId) : undefined;
-    if (
-      this.pendingMove &&
-      self &&
-      (self.x !== this.pendingMove.fromX || self.y !== this.pendingMove.fromY)
-    ) {
-      this.pendingMove = null;
-    }
+    const presentationState = this.presentationState(this.state);
 
     this.hud.setArenaWidth(this.state.width * TILE);
     this.worldRenderer.setState(
@@ -321,7 +389,7 @@ export class OnlineGameScene extends Scene {
       snapshot.presentations
     );
     this.assetLayer.setState(
-      this.state,
+      presentationState,
       this.connection.playerId ?? undefined,
       snapshot.presentations
     );
