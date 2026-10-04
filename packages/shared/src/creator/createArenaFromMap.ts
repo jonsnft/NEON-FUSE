@@ -1,6 +1,6 @@
 import { GAME } from "../constants/game";
 import { DEFAULT_GAME_RULES, type GameRules } from "../rules/types";
-import { pickupKindsForRules } from "../rules/catalog";
+import { gameModePolicyForRules, pickupKindsForRules } from "../rules/catalog";
 import { distributePickups } from "../sim/pickups";
 import type { SimPlayer, GameState } from "../sim/types";
 import type { CreatorMapDefinition } from "./types";
@@ -29,7 +29,11 @@ export function createArenaFromMap(
       id,
       x: spawn.x,
       y: spawn.y,
+      spawnX: spawn.x,
+      spawnY: spawn.y,
       alive: true,
+      respawnAtMs: null,
+      invulnerableUntilMs: 0,
       speedTier: 0,
       blastRange: 1,
       coreCapacity: 1
@@ -46,6 +50,7 @@ export function createArenaFromMap(
     playerIds.length,
     pickupKindsForRules(rules)
   );
+  const mode = gameModePolicyForRules(rules);
 
   return {
     mapId: mapValue.id,
@@ -72,7 +77,7 @@ export function createArenaFromMap(
       }))
     },
     elapsedMs: 0,
-    roundDurationMs: GAME.targetMatchSeconds * 1000,
+    roundDurationMs: mode.roundDurationMs,
     suddenDeathStartMs: GAME.suddenDeathStartSeconds * 1000,
     suddenDeathCursor: 0,
     nextCoreId: 1,
