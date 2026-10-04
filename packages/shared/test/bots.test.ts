@@ -85,7 +85,8 @@ describe("AI bots", () => {
       tickSimulation(state, 100);
     }
 
+    const metrics = state.metrics.players.find((entry) => entry.playerId === "bot-1");
     expect(bot.alive).toBe(true);
-    expect(state.metrics.players["bot-1"]?.selfEliminations ?? 0).toBe(0);
+    expect(metrics?.selfEliminations ?? 0).toBe(0);
   });
 });
