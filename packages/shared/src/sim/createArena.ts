@@ -1,14 +1,9 @@
 import { GAME } from "../constants/game";
 import { pickupKindsForRules } from "../rules/catalog";
 import { DEFAULT_GAME_RULES, type GameRules } from "../rules/types";
-import type { GameState, SimPickup, SimPlayer, TileKind } from "./types";
+import { distributePickups } from "./pickups";
+import type { GameState, SimPlayer, TileKind } from "./types";
 import { indexOf } from "./types";
-
-const pickupPlan: SimPickup[] = [
-  { x: 3, y: 1, kind: "range", revealed: false },
-  { x: 5, y: 1, kind: "capacity", revealed: false },
-  { x: 7, y: 1, kind: "speed", revealed: false }
-];
 
 const spawnPoints = [
   [1, 1],
@@ -60,13 +55,13 @@ export function createArena(
     }
   }
 
-  const allowedPickups = new Set(pickupKindsForRules(rules));
-  const activePickupPlan = pickupPlan.filter((pickup) => allowedPickups.has(pickup.kind));
-  for (const pickup of activePickupPlan) {
-    if (!safe.has(`${pickup.x},${pickup.y}`)) {
-      tiles[indexOf({ width }, pickup.x, pickup.y)] = "soft";
+  const softCells: Array<{ x: number; y: number }> = [];
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      if (tiles[indexOf({ width }, x, y)] === "soft") softCells.push({ x, y });
     }
   }
+  const pickups = distributePickups(softCells, playerIds.length, pickupKindsForRules(rules));
 
   const players: SimPlayer[] = playerIds.map((id, i) => {
     const [x, y] = spawnPoints[i];
@@ -90,7 +85,7 @@ export function createArena(
     players,
     cores: [],
     blasts: [],
-    pickups: activePickupPlan.filter((p) => !safe.has(`${p.x},${p.y}`)).map((p) => ({ ...p })),
+    pickups,
     metrics: {
       chainDetonations: 0,
       reachedSuddenDeath: false,
@@ -99,7 +94,10 @@ export function createArena(
         spawnIndex,
         coresPlaced: 0,
         pickupsCollected: { range: 0, capacity: 0, speed: 0 },
-        eliminatedAtMs: null
+        eliminations: 0,
+        selfEliminations: 0,
+        eliminatedAtMs: null,
+        eliminatedByPlayerId: null
       }))
     },
     elapsedMs: 0,
