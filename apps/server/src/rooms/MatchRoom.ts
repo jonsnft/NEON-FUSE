@@ -37,6 +37,7 @@ const isRoundFinished = (game: GameState): boolean => game.phase === "finished";
 const sameConfig = (a: LobbyConfig, b: LobbyConfig): boolean =>
   a.maxPlayers === b.maxPlayers &&
   a.mapId === b.mapId &&
+  a.gameModeId === b.gameModeId &&
   a.itemPresetId === b.itemPresetId &&
   a.modifierPresetId === b.modifierPresetId &&
   a.pacePresetId === b.pacePresetId;
@@ -225,6 +226,12 @@ export class MatchRoom extends Room {
       const player = playerById(this.game, client.sessionId);
       if (player?.alive) {
         player.alive = false;
+        player.respawnAtMs = null;
+      }
+      if (remainingIds.length < MIN_PLAYERS) {
+        this.game.phase = "finished";
+        this.game.winnerId = remainingIds[0] ?? null;
+      } else {
         resolveRound(this.game);
       }
       this.broadcastSnapshot();
@@ -244,6 +251,7 @@ export class MatchRoom extends Room {
 
   private gameRules(): GameRules {
     return {
+      gameModeId: this.config.gameModeId,
       itemPresetId: this.config.itemPresetId,
       modifierPresetId: this.config.modifierPresetId,
       pacePresetId: this.config.pacePresetId
@@ -370,6 +378,7 @@ export class MatchRoom extends Room {
       connectedPlayers: this.clients.length,
       readyPlayers: this.readyIds.size,
       mapId: this.config.mapId,
+      gameModeId: this.config.gameModeId,
       itemPresetId: this.config.itemPresetId,
       modifierPresetId: this.config.modifierPresetId,
       pacePresetId: this.config.pacePresetId
