@@ -32,6 +32,12 @@ const PLAYER_COLORS = [
   0xffffff
 ] as const;
 
+interface PlayerWaypoint {
+  x: number;
+  y: number;
+  facing: Facing;
+}
+
 interface PlayerSpriteState {
   image: GameObjects.Image;
   x: number;
@@ -39,6 +45,7 @@ interface PlayerSpriteState {
   targetX: number;
   targetY: number;
   facing: Facing;
+  waypoints: PlayerWaypoint[];
   movingUntilMs: number;
   alive: boolean;
   eliminatedAtMs: number | null;
@@ -62,6 +69,14 @@ const teamColor = (teamId?: string | null): number | null => {
   if (teamId === "alpha") return 0x53f3ff;
   if (teamId === "beta") return 0xff4fd8;
   return null;
+};
+
+const tileDurationMs = (speedTier: number): number => Math.max(82, 150 - speedTier * 14);
+
+const moveToward = (current: number, target: number, distance: number): number => {
+  const delta = target - current;
+  if (Math.abs(delta) <= distance) return target;
+  return current + Math.sign(delta) * distance;
 };
 
 export class SpriteAtlasLayer {
@@ -118,7 +133,6 @@ export class SpriteAtlasLayer {
 
     const preferences = getVisualPreferences();
     const animated = preferences.ambientMotionEnabled && preferences.quality !== "low";
-    const follow = 1 - Math.exp(-Math.max(0, deltaMs) / 42);
 
     this.selection.clear();
 
@@ -127,8 +141,19 @@ export class SpriteAtlasLayer {
       const visual = this.players.get(player.id);
       if (!visual) continue;
 
-      visual.x += (visual.targetX - visual.x) * follow;
-      visual.y += (visual.targetY - visual.y) * follow;
+      const waypoint = visual.waypoints[0];
+      if (waypoint) {
+        visual.facing = waypoint.facing;
+        const pixelsPerMs = TILE / tileDurationMs(player.speedTier);
+        const distance = Math.max(0, deltaMs) * pixelsPerMs;
+        visual.x = moveToward(visual.x, waypoint.x, distance);
+        visual.y = moveToward(visual.y, waypoint.y, distance);
+
+        if (visual.x === waypoint.x && visual.y === waypoint.y) {
+          visual.waypoints.shift();
+          if (visual.waypoints[0]) visual.facing = visual.waypoints[0].facing;
+        }
+      }
       visual.image.setPosition(visual.x, visual.y);
 
       const variant = avatarVariant(this.presentations[player.id]);
@@ -138,7 +163,7 @@ export class SpriteAtlasLayer {
 
       if (player.alive) {
         visual.image.setVisible(true);
-        const moving = timeMs < visual.movingUntilMs;
+        const moving = visual.waypoints.length > 0 || timeMs < visual.movingUntilMs;
         visual.image.setFrame(playerFrame(variant, visual.facing, moving, timeMs, animated));
 
         this.selection.fillStyle(identityColor, 0.95);
@@ -271,6 +296,7 @@ export class SpriteAtlasLayer {
           targetX,
           targetY,
           facing: "down",
+          waypoints: [],
           movingUntilMs: 0,
           alive: player.alive,
           eliminatedAtMs: player.alive ? null : this.scene.time.now
@@ -279,16 +305,31 @@ export class SpriteAtlasLayer {
       }
 
       if (visual.targetX !== targetX || visual.targetY !== targetY) {
-        visual.facing = inferFacing(visual.targetX, visual.targetY, targetX, targetY, visual.facing);
-        visual.movingUntilMs = this.scene.time.now + 130;
+        const tileDistance = (Math.abs(targetX - visual.targetX) + Math.abs(targetY - visual.targetY)) / TILE;
+        if (tileDistance !== 1 || visual.waypoints.length >= 4) {
+          visual.x = targetX;
+          visual.y = targetY;
+          visual.waypoints.length = 0;
+        } else {
+          const facing = inferFacing(visual.targetX, visual.targetY, targetX, targetY, visual.facing);
+          visual.waypoints.push({ x: targetX, y: targetY, facing });
+          if (visual.waypoints.length === 1) visual.facing = facing;
+          visual.movingUntilMs = this.scene.time.now + tileDurationMs(player.speedTier);
+        }
         visual.targetX = targetX;
         visual.targetY = targetY;
       }
 
       if (visual.alive && !player.alive) {
         visual.eliminatedAtMs = this.scene.time.now;
+        visual.waypoints.length = 0;
       } else if (!visual.alive && player.alive) {
         visual.eliminatedAtMs = null;
+        visual.x = targetX;
+        visual.y = targetY;
+        visual.targetX = targetX;
+        visual.targetY = targetY;
+        visual.waypoints.length = 0;
         visual.image.setVisible(true);
       }
       visual.alive = player.alive;
